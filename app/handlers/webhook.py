@@ -7,6 +7,42 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
+import boto3
+
+
+def enqueue_webhook_event(
+    *,
+    queue_url: str,
+    webhook: WebhookEvent,
+) -> dict[str, str]:
+    """Place a validated GitHub event onto the analysis queue."""
+
+    repository = webhook.payload.get("repository", {})
+    repository_name = repository.get("full_name")
+    pull_number = webhook.payload.get("number")
+
+    if not repository_name:
+        raise ValueError("Webhook payload has no repository name.")
+
+    if not pull_number:
+        raise ValueError("Webhook payload has no pull request number.")
+
+    message = {
+        "delivery_id": webhook.delivery_id,
+        "event": webhook.event_type,
+        "action": webhook.action,
+        "repository": repository_name,
+        "pull_number": pull_number,
+    }
+
+    sqs = boto3.client("sqs")
+
+    sqs.send_message(
+        QueueUrl=queue_url,
+        MessageBody=json.dumps(message),
+    )
+
+    return message
 
 @dataclass(frozen=True)
 class WebhookEvent:
@@ -166,21 +202,39 @@ def lambda_handler(
             ),
         }
 
+    queue_url = os.getenv("WEBHOOK_QUEUE_URL")
+
+    if not queue_url:
+        return {
+            "statusCode": 500,
+            "body": json.dumps(
+                {"error": "Webhook queue is not configured."}
+            ),
+        }
+
+    try:
+        message = enqueue_webhook_event(
+            queue_url=queue_url,
+            webhook=webhook,
+        )
+    except Exception as exc:
+        print(f"Failed to enqueue webhook event: {exc}")
+
+        return {
+            "statusCode": 500,
+            "body": json.dumps(
+                {"error": "Failed to enqueue webhook event."}
+            ),
+        }
+
     return {
-        "statusCode": 200,
+        "statusCode": 202,
         "body": json.dumps(
             {
-                "status": "accepted",
-                "event": "pull_request",
-                "action": webhook.action,
-                "delivery_id": webhook.delivery_id,
-                "repository": webhook.payload.get(
-                    "repository",
-                    {},
-                ).get("full_name"),
-                "pull_number": webhook.payload.get(
-                    "number"
-                ),
+                "status": "queued",
+                "delivery_id": message["delivery_id"],
+                "repository": message["repository"],
+                "pull_number": message["pull_number"],
             }
         ),
     }

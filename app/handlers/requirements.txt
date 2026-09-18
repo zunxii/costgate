@@ -1,0 +1,2 @@
+# Dependencies for AWS Lambda Handlers
+# (Built using standard library; requirements file provided for SAM build)

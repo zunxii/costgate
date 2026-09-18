@@ -1,13 +1,14 @@
+import json
+from pathlib import Path
 from decimal import Decimal
 
+from app.domain.enums import ConfidenceLevel, CostDirection
 from app.cost_engine.assumptions import CostAssumptions
 from app.cost_engine.pricing import get_rds_pricing
 from app.analyzer.comparator import compare_plans
 from app.analyzer.plan_parser import parse_explain_json
 from app.cost_engine.calculator import calculate_cost_impact
-from app.domain.enums import ConfidenceLevel, CostDirection
-import json
-from pathlib import Path
+from app.cost_engine.confidence import determine_confidence
 
 FIXTURES_DIR = Path(__file__).resolve().parents[1] / "fixtures"
 
@@ -92,7 +93,7 @@ def test_cost_increase():
     assert estimate.monthly_delta > Decimal("0")
     assert estimate.lower_bound < estimate.monthly_delta
     assert estimate.upper_bound > estimate.monthly_delta
-    assert estimate.confidence == ConfidenceLevel.MEDIUM
+    assert estimate.confidence == ConfidenceLevel.HIGH
 
 
 def test_cost_decrease():
@@ -130,3 +131,40 @@ def test_cost_decrease():
     assert estimate.direction == CostDirection.DECREASE
     assert estimate.monthly_delta < Decimal("0")
     assert estimate.lower_bound < estimate.upper_bound
+
+def test_high_confidence_for_clear_index_improvement():
+    baseline = parse_explain_json(
+        load_fixture("seq_scan_plan.json")
+    )
+
+    optimized = parse_explain_json(
+        load_fixture("bitmap_scan_plan.json")
+    )
+
+    comparison = compare_plans(
+        baseline,
+        optimized,
+    )
+
+    confidence = determine_confidence(comparison)
+
+    assert confidence == ConfidenceLevel.HIGH
+
+
+def test_high_confidence_in_reverse_direction():
+    optimized = parse_explain_json(
+        load_fixture("bitmap_scan_plan.json")
+    )
+
+    baseline = parse_explain_json(
+        load_fixture("seq_scan_plan.json")
+    )
+
+    comparison = compare_plans(
+        optimized,
+        baseline,
+    )
+
+    confidence = determine_confidence(comparison)
+
+    assert confidence == ConfidenceLevel.HIGH

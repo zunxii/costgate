@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from decimal import Decimal, ROUND_HALF_UP
 
-from app.domain.enums import ConfidenceLevel, CostDirection
+from app.domain.enums import CostDirection
 from app.domain.models import CostEstimate, PlanComparison
 
 from .assumptions import CostAssumptions
 from .pricing import RDSPricing
+from .confidence import determine_confidence
 
 
 MILLISECONDS_PER_SECOND = Decimal("1000")
@@ -130,7 +131,7 @@ def calculate_cost_impact(
         upper_bound=upper_bound,
         # We will replace this with the dedicated confidence
         # system once confidence.py is implemented.
-        confidence=ConfidenceLevel.MEDIUM,
+        confidence=determine_confidence(comparison),
         direction=_direction(monthly_delta),
         assumptions={
             "method": "attributed_database_compute",

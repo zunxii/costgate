@@ -102,3 +102,43 @@ class GitHubClient:
             f"/repos/{owner}/{repo}/contents/{path}",
             params={"ref": ref},
         )
+    def create_pull_request_comment(
+    self,
+    *,
+    owner: str,
+    repo: str,
+    pull_number: int,
+    body: str,
+) -> dict[str, Any]:
+        return self._request(
+            "POST",
+            f"/repos/{owner}/{repo}/issues/{pull_number}/comments",
+            json={"body": body},
+        )
+
+    def list_pull_request_comments(
+    self,
+    *,
+    owner: str,
+    repo: str,
+    pull_number: int,
+) -> list[dict[str, Any]]:
+        return self._request(
+            "GET",
+            f"/repos/{owner}/{repo}/issues/{pull_number}/comments",
+            params={"per_page": 100},
+        )
+
+    def update_issue_comment(
+    self,
+    *,
+    owner: str,
+    repo: str,
+    comment_id: int,
+    body: str,
+    ) -> dict[str, Any]:
+        return self._request(
+            "PATCH",
+            f"/repos/{owner}/{repo}/issues/comments/{comment_id}",
+            json={"body": body},
+        )

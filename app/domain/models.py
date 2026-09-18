@@ -61,9 +61,6 @@ class PlanComparison:
 class CostEstimate:
     """
     Estimated monthly infrastructure impact.
-
-    This is an estimate under explicit workload/pricing assumptions,
-    not an exact AWS invoice prediction.
     """
 
     monthly_delta: Decimal
@@ -77,12 +74,24 @@ class CostEstimate:
 
 
 @dataclass(frozen=True)
-class AnalysisResult:
+class ChangedQuery:
     """
-    Complete result of analyzing one query change.
+    A SQL statement that changed between the baseline and candidate
+    versions of a file.
     """
 
-    query: QueryCandidate
+    baseline_sql: str
+    candidate_sql: str
+    file_path: str
+
+
+@dataclass(frozen=True)
+class AnalysisResult:
+    """
+    Complete analysis of one changed SQL statement.
+    """
+
+    query: ChangedQuery
     baseline: PlanMetrics
     candidate: PlanMetrics
     comparison: PlanComparison

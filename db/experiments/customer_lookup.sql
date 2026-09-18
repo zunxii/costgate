@@ -9,4 +9,4 @@ SELECT
     total_cents,
     created_at
 FROM orders
-WHERE customer_id = 12345;
+WHERE LOWER(customer_id::text) = '12345';

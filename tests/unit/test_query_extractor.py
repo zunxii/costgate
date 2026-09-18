@@ -207,3 +207,29 @@ def test_reject_multiple_changed_queries():
         return
 
     raise AssertionError("Expected QueryExtractionError")
+
+def test_detect_changed_query_unwraps_explain():
+    baseline = """
+    EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
+    SELECT *
+    FROM orders
+    WHERE customer_id = 12345;
+    """
+
+    candidate = """
+    EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
+    SELECT *
+    FROM orders
+    WHERE customer_id::text = '12345';
+    """
+
+    changed = detect_changed_query(
+        baseline,
+        candidate,
+        "customer_lookup.sql",
+    )
+
+    assert changed.baseline_sql.startswith("SELECT")
+    assert changed.candidate_sql.startswith("SELECT")
+    assert "customer_id = 12345" in changed.baseline_sql
+    assert "customer_id::text = '12345'" in changed.candidate_sql

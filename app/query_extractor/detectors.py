@@ -122,6 +122,9 @@ def detect_changed_query(
 
     baseline_sql, candidate_sql = changed_pairs[0]
 
+    baseline_sql = _unwrap_explain(baseline_sql)
+    candidate_sql = _unwrap_explain(candidate_sql)
+
     if not _is_select(baseline_sql):
         raise QueryExtractionError(
             "Baseline statement is not a supported SELECT/WITH query."
@@ -137,3 +140,22 @@ def detect_changed_query(
         candidate_sql=candidate_sql,
         file_path=file_path,
     )
+
+def _unwrap_explain(sql: str) -> str:
+    """
+    Remove a PostgreSQL EXPLAIN wrapper and return the underlying query.
+
+    Supports forms such as:
+        EXPLAIN SELECT ...
+        EXPLAIN ANALYZE SELECT ...
+        EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) SELECT ...
+    """
+    pattern = re.compile(
+        r"^\s*EXPLAIN"
+        r"(?:\s*\([^)]*\))?"
+        r"(?:\s+ANALYZE)?"
+        r"\s+",
+        re.IGNORECASE,
+    )
+
+    return pattern.sub("", sql, count=1).strip()

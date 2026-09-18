@@ -28,6 +28,7 @@ class GitHubAppAuthenticator:
         self.installation_id = installation_id or os.getenv(
             "GITHUB_INSTALLATION_ID"
         )
+        self.private_key = os.getenv("GITHUB_PRIVATE_KEY")
         self.private_key_path = private_key_path or os.getenv(
             "GITHUB_PRIVATE_KEY_PATH"
         )
@@ -40,21 +41,31 @@ class GitHubAppAuthenticator:
                 "GITHUB_INSTALLATION_ID is not configured."
             )
 
-        if not self.private_key_path:
+        if not self.private_key and not self.private_key_path:
             raise GitHubIntegrationError(
-                "GITHUB_PRIVATE_KEY_PATH is not configured."
+                "Either GITHUB_PRIVATE_KEY or "
+                "GITHUB_PRIVATE_KEY_PATH must be configured."
             )
 
-        key_path = Path(self.private_key_path).expanduser()
+        if self.private_key_path:
+            key_path = Path(self.private_key_path).expanduser()
 
-        if not key_path.is_file():
-            raise GitHubIntegrationError(
-                f"GitHub private key not found: {key_path}"
-            )
+            if not key_path.is_file():
+                raise GitHubIntegrationError(
+                    f"GitHub private key not found: {key_path}"
+                )
 
-        self.private_key_path = str(key_path)
+            self.private_key_path = str(key_path)
 
     def _load_private_key(self) -> str:
+        if self.private_key:
+            return self.private_key
+
+        if not self.private_key_path:
+            raise GitHubIntegrationError(
+                "GitHub private key is not configured."
+            )
+
         try:
             return Path(self.private_key_path).read_text()
         except OSError as exc:

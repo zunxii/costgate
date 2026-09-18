@@ -83,3 +83,10 @@ logs/
 
 # Docker / Local data
 *.postman_collection.json
+
+# AWS SAM
+.aws-sam/
+samconfig.toml
+
+# RDS CA certificate
+global-bundle.pem

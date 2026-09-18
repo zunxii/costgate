@@ -1,0 +1,208 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Description: CostGate PR cloud-cost analysis pipeline
+
+Parameters:
+  WebhookSecret:
+    Type: String
+    NoEcho: true
+    Description: GitHub webhook secret
+
+  GitHubAppId:
+    Type: String
+    Default: "4992403"
+
+  GitHubInstallationId:
+    Type: String
+    Default: "162807620"
+
+  RdsHost:
+    Type: String
+    Default: "costgate-db.cfo2wamsmj7q.eu-north-1.rds.amazonaws.com"
+
+  RdsRegion:
+    Type: String
+    Default: "eu-north-1"
+
+  RdsEngine:
+    Type: String
+    Default: "postgres"
+
+  RdsInstanceClass:
+    Type: String
+    Default: "db.t4g.small"
+
+  RdsInstanceHourlyUsd:
+    Type: String
+    Default: "0.04"
+    Description: Cost-model input assumption, not an AWS billing guarantee
+
+  MonthlyRequests:
+    Type: String
+    Default: "1000000"
+
+  AnalysisSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Default: "subnet-099621f07d6a1a31a,subnet-00f174b5c564fe3df"
+
+  AnalysisSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+    Default: "sg-0fe5469c57a6dce2a"
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Architectures:
+      - x86_64
+    MemorySize: 256
+
+Resources:
+
+  # ------------------------------------------------------------------
+  # Queueing
+  # ------------------------------------------------------------------
+
+  WebhookDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      MessageRetentionPeriod: 1209600
+
+  WebhookQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      VisibilityTimeout: 360
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt WebhookDeadLetterQueue.Arn
+        maxReceiveCount: 3
+
+  # ------------------------------------------------------------------
+  # Public GitHub webhook
+  # ------------------------------------------------------------------
+
+  WebhookFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: app/handlers/
+      Handler: webhook.lambda_handler
+      Timeout: 10
+
+      Environment:
+        Variables:
+          GITHUB_WEBHOOK_SECRET: !Ref WebhookSecret
+          WEBHOOK_QUEUE_URL: !Ref WebhookQueue
+
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - sqs:SendMessage
+              Resource: !GetAtt WebhookQueue.Arn
+
+      Events:
+        GitHubWebhook:
+          Type: HttpApi
+          Properties:
+            Path: /github/webhook
+            Method: POST
+
+  # ------------------------------------------------------------------
+  # GitHub PR processor
+  # ------------------------------------------------------------------
+
+  ProcessorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: app.handlers.processor.lambda_handler
+      Timeout: 45
+
+      Environment:
+        Variables:
+          ANALYSIS_FUNCTION_NAME: !Ref AnalysisFunction
+
+          GITHUB_APP_ID: !Ref GitHubAppId
+          GITHUB_INSTALLATION_ID: !Ref GitHubInstallationId
+
+          GITHUB_PRIVATE_KEY: '{{resolve:secretsmanager:costgate/github/private-key:SecretString}}'
+
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - sqs:ReceiveMessage
+                - sqs:DeleteMessage
+                - sqs:GetQueueAttributes
+                - sqs:ChangeMessageVisibility
+              Resource: !GetAtt WebhookQueue.Arn
+
+            - Effect: Allow
+              Action:
+                - lambda:InvokeFunction
+              Resource: !GetAtt AnalysisFunction.Arn
+
+      Events:
+        WebhookQueueEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt WebhookQueue.Arn
+            BatchSize: 1
+
+  # ------------------------------------------------------------------
+  # Database analysis worker
+  # ------------------------------------------------------------------
+
+  AnalysisFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: app.handlers.analyze.lambda_handler
+      Timeout: 30
+
+      VpcConfig:
+        SubnetIds: !Ref AnalysisSubnetIds
+        SecurityGroupIds:
+          - !Ref AnalysisSecurityGroupId
+
+      Environment:
+        Variables:
+          RDSHOST: !Ref RdsHost
+          PGPORT: "5432"
+          PGDATABASE: "costgate"
+          PGUSER: "postgres"
+          PGPASSWORD: '{{resolve:secretsmanager:costgate/rds/password:SecretString}}'
+
+          PGSSLMODE: "verify-full"
+          PGSSLROOTCERT: "/var/task/global-bundle.pem"
+
+          RDS_REGION: !Ref RdsRegion
+          RDS_ENGINE: !Ref RdsEngine
+          RDS_INSTANCE_CLASS: !Ref RdsInstanceClass
+          RDS_INSTANCE_HOURLY_USD: !Ref RdsInstanceHourlyUsd
+
+          COSTGATE_MONTHLY_REQUESTS: !Ref MonthlyRequests
+
+      Policies:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+
+Outputs:
+
+  WebhookUrl:
+    Description: GitHub webhook endpoint
+    Value: !Sub
+      - "https://${ApiId}.execute-api.${AWS::Region}.amazonaws.com/github/webhook"
+      - ApiId: !Ref ServerlessHttpApi
+
+  WebhookQueueUrl:
+    Description: CostGate webhook SQS queue
+    Value: !Ref WebhookQueue
+
+  ProcessorFunctionName:
+    Description: CostGate PR processor Lambda
+    Value: !Ref ProcessorFunction
+
+  AnalysisFunctionName:
+    Description: CostGate VPC analysis Lambda
+    Value: !Ref AnalysisFunction

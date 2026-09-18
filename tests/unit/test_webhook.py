@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import json
+import app.handlers.webhook as webhook_handler
 
 from app.handlers.webhook import (
     lambda_handler,
@@ -10,6 +11,22 @@ from app.handlers.webhook import (
 
 
 SECRET = "test-secret"
+
+class FakeSQSClient:
+    def __init__(self):
+        self.messages = []
+
+    def send_message(self, *, QueueUrl, MessageBody):
+        self.messages.append(
+            {
+                "QueueUrl": QueueUrl,
+                "MessageBody": MessageBody,
+            }
+        )
+
+        return {
+            "MessageId": "test-message-123",
+        }
 
 
 def _sign(payload: bytes) -> str:
@@ -74,14 +91,29 @@ def test_parse_pull_request_webhook():
     assert event.delivery_id == "delivery-123"
     assert event.payload["number"] == 1
 
-
-def test_lambda_handler_accepts_supported_pull_request():
+def test_lambda_handler_queues_supported_pull_request(monkeypatch):
     body = _payload()
 
-    # The production handler reads this from the environment.
-    import os
+    monkeypatch.setenv(
+        "GITHUB_WEBHOOK_SECRET",
+        SECRET,
+    )
+    monkeypatch.setenv(
+        "WEBHOOK_QUEUE_URL",
+        "https://sqs.eu-north-1.amazonaws.com/123/costgate-test",
+    )
 
-    os.environ["GITHUB_WEBHOOK_SECRET"] = SECRET
+    fake_sqs = FakeSQSClient()
+
+    monkeypatch.setattr(
+        webhook_handler.boto3,
+        "client",
+        lambda service_name: (
+            fake_sqs
+            if service_name == "sqs"
+            else None
+        ),
+    )
 
     response = lambda_handler(
         {
@@ -96,16 +128,32 @@ def test_lambda_handler_accepts_supported_pull_request():
         None,
     )
 
-    assert response["statusCode"] == 200
+    assert response["statusCode"] == 202
 
     result = json.loads(response["body"])
 
-    assert result["status"] == "accepted"
-    assert result["event"] == "pull_request"
-    assert result["action"] == "opened"
+    assert result["status"] == "queued"
     assert result["repository"] == "zunxii/costgate"
     assert result["pull_number"] == 1
+    assert result["delivery_id"] == "delivery-123"
 
+    assert len(fake_sqs.messages) == 1
+    assert (
+        fake_sqs.messages[0]["QueueUrl"]
+        == "https://sqs.eu-north-1.amazonaws.com/123/costgate-test"
+    )
+
+    queued_message = json.loads(
+        fake_sqs.messages[0]["MessageBody"]
+    )
+
+    assert queued_message == {
+        "delivery_id": "delivery-123",
+        "event": "pull_request",
+        "action": "opened",
+        "repository": "zunxii/costgate",
+        "pull_number": 1,
+    }
 
 def test_lambda_handler_rejects_invalid_signature():
     body = _payload()

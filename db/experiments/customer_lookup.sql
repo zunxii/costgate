@@ -9,4 +9,5 @@ SELECT
     total_cents,
     created_at
 FROM orders
-WHERE LOWER(customer_id::text) = '12345';
+WHERE LOWER(customer_id::text) = '12345'
+   OR status = 'pending';

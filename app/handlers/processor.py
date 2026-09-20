@@ -54,6 +54,7 @@ def lambda_handler(
             owner=owner,
             repo=repo,
             pull_number=pull_number,
+            delivery_id=message.get("delivery_id"),
         )
 
     return {

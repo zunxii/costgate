@@ -1,0 +1,14 @@
+{
+    "resource_id": "costgate-db",
+    "source_note": "Simulated AWS Cost and Usage Report line items for the CostGate RDS resource. This is resource-level billing used for the hackathon demonstration.",
+    "baseline_window": {
+        "start": "2026-08-20",
+        "end": "2026-08-27",
+        "daily_cost_usd": "1.9200"
+    },
+    "candidate_window": {
+        "start": "2026-09-10",
+        "end": "2026-09-17",
+        "daily_cost_usd": "1.9480"
+    }
+}

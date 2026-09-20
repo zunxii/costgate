@@ -28,6 +28,7 @@ class PullRequestContext:
     base_sha: str
     head_sha: str
     files: list[PullRequestFile]
+    author: str = "unknown"
 
 
 class PullRequestReader:
@@ -104,6 +105,10 @@ class PullRequestReader:
             base_sha=base_sha,
             head_sha=head_sha,
             files=files,
+            author=pr.get("user", {}).get(
+                "login",
+                "unknown",
+            ),
         )
 
     def _read_file(

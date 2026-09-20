@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 
 import sqlparse
+from app.query_extractor.python_sql_extractor import extract_sql_from_python
 
 from app.domain.errors import QueryExtractionError
 from app.domain.models import ChangedQuery
@@ -67,6 +68,18 @@ def _is_select(sql: str) -> bool:
     return normalized.startswith("select") or normalized.startswith("with")
 
 
+def _extract_statements(content: str, file_path: str) -> list[str]:
+    """
+    Extract supported SQL statements according to the source file type.
+
+    .py files use the narrow Python literal SQL extractor.
+    Other files retain the existing SQL-file behavior.
+    """
+    if file_path.lower().endswith(".py"):
+        return extract_sql_from_python(content)
+
+    return _split_sql(content)
+
 def detect_changed_query(
     baseline_content: str,
     candidate_content: str,
@@ -81,8 +94,8 @@ def detect_changed_query(
     - The statement remains a SELECT/WITH query.
     """
 
-    baseline_statements = _split_sql(baseline_content)
-    candidate_statements = _split_sql(candidate_content)
+    baseline_statements = _extract_statements(baseline_content, file_path)
+    candidate_statements = _extract_statements(candidate_content, file_path)
 
     if not baseline_statements:
         raise QueryExtractionError(

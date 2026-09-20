@@ -8,12 +8,14 @@ import { GithubIcon } from "@/components/icons";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
+import { Logo } from "@/components/ui/logo";
+
 const NAV_ITEMS = [
   { label: "Overview", href: "/" },
+  { label: "Dashboard", href: "/dashboard", badge: "Console" },
   { label: "PR Studio", href: "/demo", badge: "Live" },
   { label: "Cost Simulator", href: "/calculator" },
   { label: "Architecture", href: "/architecture" },
-  { label: "Pricing", href: "/pricing" },
   { label: "Security", href: "/security" },
 ];
 
@@ -41,14 +43,7 @@ export function Navbar() {
     >
       <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         {/* Brand Logo */}
-        <Link href="/" className="flex items-center gap-2 group">
-          <div className="flex size-7 items-center justify-center rounded bg-primary text-primary-foreground group-hover:opacity-90 transition-opacity">
-            <Database className="size-4" />
-          </div>
-          <span className="font-sans text-sm font-bold tracking-tight text-foreground flex items-center gap-1.5">
-            CostGate
-          </span>
-        </Link>
+        <Logo size="sm" href="/" />
 
         {/* Desktop Navigation Links */}
         <nav className="hidden lg:flex items-center gap-1">
@@ -61,13 +56,13 @@ export function Navbar() {
                 className={cn(
                   "relative px-3 py-1.5 text-sm font-medium rounded-md transition-colors flex items-center gap-1.5",
                   isActive
-                    ? "bg-muted text-foreground"
+                    ? "bg-muted text-foreground font-semibold"
                     : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
                 )}
               >
                 <span>{item.label}</span>
                 {item.badge && (
-                  <span className="text-[9px] font-mono uppercase bg-primary/10 text-primary px-1.5 py-0.5 rounded border border-primary/20 font-bold">
+                  <span className="text-[9px] font-mono uppercase bg-orange-50 text-orange-600 px-1.5 py-0.5 rounded border border-orange-200 font-bold">
                     {item.badge}
                   </span>
                 )}
@@ -78,27 +73,19 @@ export function Navbar() {
 
         {/* Right Action CTAs */}
         <div className="hidden sm:flex items-center gap-3">
-          <a
-            href="https://github.com/zunxii/costgate"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shadow-sm"
+          <Link
+            href="/onboarding"
+            className="inline-flex items-center gap-2 rounded-md border border-orange-200 bg-orange-50/50 px-3.5 py-1.5 text-sm font-semibold text-orange-700 hover:bg-orange-100 transition-colors shadow-sm"
           >
-            <GithubIcon className="size-4" />
-            <span>GitHub</span>
-            <span className="rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground font-mono border border-border">
-              v0.1
-            </span>
-          </a>
+            <span>Connect Repo</span>
+          </Link>
 
-          <a
-            href="https://github.com/apps"
-            target="_blank"
-            rel="noopener noreferrer"
-            className={cn(buttonVariants({ size: "sm" }), "font-semibold text-sm h-9 px-4 rounded-md transition-all")}
+          <Link
+            href="/dashboard"
+            className={cn(buttonVariants({ size: "sm" }), "font-semibold text-sm h-9 px-4 rounded-md transition-all bg-slate-900 hover:bg-slate-800 text-white")}
           >
-            <span>Install Free Trial</span>
-          </a>
+            <span>Open Console</span>
+          </Link>
         </div>
 
         {/* Mobile Menu Button */}

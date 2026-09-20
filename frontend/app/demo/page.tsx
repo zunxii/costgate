@@ -21,6 +21,7 @@ import {
 import { buttonVariants } from "@/components/ui/button";
 import { formatCurrency } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
+import { LiveDashboard } from "@/components/live-dashboard";
 
 interface SimulatedPR {
   id: string;
@@ -417,6 +418,11 @@ export default function DemoPage() {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Live Backend Telemetry Ledger Section */}
+        <div className="mt-16">
+          <LiveDashboard />
         </div>
       </div>
     </div>

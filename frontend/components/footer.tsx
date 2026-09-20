@@ -1,9 +1,7 @@
-"use client";
-
 import React from "react";
 import Link from "next/link";
-import { Database } from "lucide-react";
 import { GithubIcon } from "@/components/icons";
+import { Logo } from "@/components/ui/logo";
 
 export function Footer() {
   return (
@@ -12,12 +10,7 @@ export function Footer() {
         <div className="grid grid-cols-2 md:grid-cols-5 gap-8 mb-10">
           {/* Brand Col (2 cols) */}
           <div className="col-span-2 space-y-3">
-            <Link href="/" className="flex items-center gap-2 text-foreground font-bold text-sm">
-              <div className="size-6 rounded bg-primary text-primary-foreground flex items-center justify-center">
-                <Database className="size-3.5" />
-              </div>
-              <span>CostGate</span>
-            </Link>
+            <Logo size="sm" href="/" />
             <p className="text-xs text-muted-foreground max-w-sm leading-relaxed">
               Cloud cost governance for GitHub Pull Requests. Catch query regressions and attribute AWS RDS impact before merge.
             </p>

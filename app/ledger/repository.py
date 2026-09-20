@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from datetime import datetime, timezone
 from typing import Any
+
+from boto3.dynamodb.conditions import Key
 
 from botocore.exceptions import ClientError
 
@@ -49,6 +52,90 @@ class PredictionLedger:
 
         return True
 
+    def schedule_verification(
+        self,
+        *,
+        prediction_id: str,
+        merged_at: str,
+        verification_due_at: str,
+        verification_source: str,
+        verification_delivery_id: str | None,
+        baseline_window_start: str,
+        baseline_window_end: str,
+        candidate_window_start: str,
+        candidate_window_end: str,
+    ) -> PredictionRecord | None:
+        try:
+            response = self.table.update_item(
+                Key={"prediction_id": prediction_id},
+                UpdateExpression=(
+                    "SET #s = :pending, "
+                    "merged_at = :merged_at, "
+                    "verification_due_at = :due_at, "
+                    "verification_source = :source, "
+                    "verification_delivery_id = :delivery_id, "
+                    "baseline_window_start = :baseline_start, "
+                    "baseline_window_end = :baseline_end, "
+                    "candidate_window_start = :candidate_start, "
+                    "candidate_window_end = :candidate_end"
+                ),
+                ConditionExpression="#s = :predicted",
+                ExpressionAttributeNames={"#s": "status"},
+                ExpressionAttributeValues={
+                    ":pending": "verification_pending",
+                    ":predicted": "predicted",
+                    ":merged_at": merged_at,
+                    ":due_at": verification_due_at,
+                    ":source": verification_source,
+                    ":delivery_id": verification_delivery_id,
+                    ":baseline_start": baseline_window_start,
+                    ":baseline_end": baseline_window_end,
+                    ":candidate_start": candidate_window_start,
+                    ":candidate_end": candidate_window_end,
+                },
+                ReturnValues="ALL_NEW",
+            )
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code")
+            if code == "ConditionalCheckFailedException":
+                return None
+            raise
+
+        return self._from_item(response["Attributes"])
+
+    def get_due_verifications(
+        self,
+        *,
+        as_of: datetime | None = None,
+        limit: int = 25,
+    ) -> list[PredictionRecord]:
+        now = (as_of or datetime.now(timezone.utc)).astimezone(timezone.utc).isoformat()
+        items: list[PredictionRecord] = []
+        last_key = None
+
+        while len(items) < limit:
+            params: dict[str, Any] = {
+                "IndexName": "VerificationDueIndex",
+                "KeyConditionExpression": (
+                    Key("status").eq("verification_pending")
+                    & Key("verification_due_at").lte(now)
+                ),
+                "Limit": min(25, limit - len(items)),
+            }
+            if last_key:
+                params["ExclusiveStartKey"] = last_key
+
+            response = self.table.query(**params)
+            items.extend(
+                self._from_item(item)
+                for item in response.get("Items", [])
+            )
+            last_key = response.get("LastEvaluatedKey")
+            if not last_key:
+                break
+
+        return items[:limit]
+
     def mark_reconciled(
         self,
         *,
@@ -65,11 +152,12 @@ class PredictionLedger:
                 "actual_error_pct = :error, "
                 "reconciled_at = :time"
             ),
-            ConditionExpression="#s = :predicted",
+            ConditionExpression="#s IN (:predicted, :pending)",
             ExpressionAttributeNames={"#s": "status"},
             ExpressionAttributeValues={
                 ":reconciled": "reconciled",
                 ":predicted": "predicted",
+                ":pending": "verification_pending",
                 ":actual": Decimal(str(actual_monthly_delta)),
                 ":error": Decimal(str(actual_error_pct)),
                 ":time": reconciled_at,
@@ -131,4 +219,12 @@ class PredictionLedger:
                 else None
             ),
             check_run_url=item.get("check_run_url"),
+            merged_at=item.get("merged_at"),
+            verification_due_at=item.get("verification_due_at"),
+            verification_source=item.get("verification_source"),
+            verification_delivery_id=item.get("verification_delivery_id"),
+            baseline_window_start=item.get("baseline_window_start"),
+            baseline_window_end=item.get("baseline_window_end"),
+            candidate_window_start=item.get("candidate_window_start"),
+            candidate_window_end=item.get("candidate_window_end"),
         )

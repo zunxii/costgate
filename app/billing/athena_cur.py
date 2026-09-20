@@ -151,6 +151,10 @@ class Boto3AthenaQueryExecutor:
         return rows
 
 
+class CURDataUnavailable(RuntimeError):
+    """Raised when CUR has not delivered data for a requested window."""
+
+
 class AthenaCURBillingSource:
     """
     Reads real AWS CUR 2.0 data through Athena.
@@ -202,11 +206,18 @@ class AthenaCURBillingSource:
 
         # Athena returns a header row followed by the aggregate row.
         values = rows[1]
-        if len(values) < 2:
+        if len(values) < 4:
             raise RuntimeError("Athena billing result is malformed.")
 
         baseline_total = Decimal(values[0] or "0")
         candidate_total = Decimal(values[1] or "0")
+        baseline_rows = int(values[2] or "0")
+        candidate_rows = int(values[3] or "0")
+
+        if baseline_rows == 0 or candidate_rows == 0:
+            raise CURDataUnavailable(
+                "CUR has not delivered billing rows for the full verification window yet."
+            )
 
         baseline_daily = baseline_total / baseline.days
         candidate_daily = candidate_total / candidate.days
@@ -251,7 +262,21 @@ SELECT
             END
         ),
         0
-    ) AS candidate_cost_usd
+    ) AS candidate_cost_usd,
+    COUNT(
+        CASE
+            WHEN line_item_usage_start_date >= TIMESTAMP {baseline_start}
+             AND line_item_usage_start_date < TIMESTAMP {baseline_end}
+            THEN 1
+        END
+    ) AS baseline_row_count,
+    COUNT(
+        CASE
+            WHEN line_item_usage_start_date >= TIMESTAMP {candidate_start}
+             AND line_item_usage_start_date < TIMESTAMP {candidate_end}
+            THEN 1
+        END
+    ) AS candidate_row_count
 FROM {self.table}
 WHERE line_item_resource_id = {resource}
   AND line_item_product_code = 'AmazonRDS'

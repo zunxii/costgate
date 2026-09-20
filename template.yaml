@@ -60,8 +60,18 @@ Parameters:
 
   CurQueryResultsS3Uri:
     Type: String
-    Default: ""
+    Default: "s3://costgate-cur-114729957390/costgate/athena-query-results"
     Description: S3 location where Athena query results are written
+
+  CurRegion:
+    Type: String
+    Default: "us-east-1"
+    Description: AWS region containing the CUR Data Export and Athena resources
+
+  CurQueryResultsBucketArn:
+    Type: String
+    Default: "arn:aws:s3:::costgate-cur-114729957390"
+    Description: S3 bucket ARN used for Athena query results
 
   AnalysisSubnetIds:
     Type: List<AWS::EC2::Subnet::Id>
@@ -144,6 +154,10 @@ Resources:
           AttributeType: S
         - AttributeName: author
           AttributeType: S
+        - AttributeName: status
+          AttributeType: S
+        - AttributeName: verification_due_at
+          AttributeType: S
 
       KeySchema:
         - AttributeName: prediction_id
@@ -164,6 +178,15 @@ Resources:
             - AttributeName: author
               KeyType: HASH
             - AttributeName: created_at
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+        - IndexName: VerificationDueIndex
+          KeySchema:
+            - AttributeName: status
+              KeyType: HASH
+            - AttributeName: verification_due_at
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
@@ -198,7 +221,7 @@ Resources:
           CUR_TABLE: !Ref CurTable
           CUR_WORKGROUP: !Ref CurWorkGroup
           CUR_QUERY_RESULTS_S3_URI: !Ref CurQueryResultsS3Uri
-          CUR_REGION: !Ref RdsRegion
+          CUR_REGION: !Ref CurRegion
 
       Policies:
         - Version: "2012-10-17"
@@ -249,6 +272,61 @@ Resources:
           Properties:
             Queue: !GetAtt WebhookQueue.Arn
             BatchSize: 1
+  ReconciliationFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: app.handlers.reconcile.lambda_handler
+      Timeout: 120
+
+      Environment:
+        Variables:
+          PREDICTION_TABLE_NAME: !Ref PredictionLedgerTable
+          CUR_DATABASE: !Ref CurDatabase
+          CUR_TABLE: !Ref CurTable
+          CUR_WORKGROUP: !Ref CurWorkGroup
+          CUR_QUERY_RESULTS_S3_URI: !Ref CurQueryResultsS3Uri
+          CUR_REGION: !Ref CurRegion
+          LEDGER_REGION: !Ref RdsRegion
+          COSTGATE_RECONCILIATION_BATCH: "10"
+
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+                - dynamodb:GetItem
+                - dynamodb:UpdateItem
+              Resource:
+                - !GetAtt PredictionLedgerTable.Arn
+                - !Sub "${PredictionLedgerTable.Arn}/index/*"
+            - Effect: Allow
+              Action:
+                - athena:StartQueryExecution
+                - athena:GetQueryExecution
+                - athena:GetQueryResults
+                - athena:GetWorkGroup
+              Resource: "*"
+            - Effect: Allow
+              Action:
+                - s3:GetBucketLocation
+                - s3:ListBucket
+              Resource: !Ref CurQueryResultsBucketArn
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:PutObject
+                - s3:AbortMultipartUpload
+              Resource: !Sub "${CurQueryResultsBucketArn}/costgate/athena-query-results/*"
+
+      Events:
+        ReconciliationSchedule:
+          Type: Schedule
+          Properties:
+            Schedule: "rate(1 hour)"
+            Enabled: true
+
   DashboardFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -345,6 +423,10 @@ Outputs:
   ProcessorFunctionName:
     Description: CostGate PR processor Lambda
     Value: !Ref ProcessorFunction
+
+  ReconciliationFunctionName:
+    Description: CostGate post-merge billing reconciliation Lambda
+    Value: !Ref ReconciliationFunction
 
   AnalysisFunctionName:
     Description: CostGate VPC analysis Lambda

@@ -44,3 +44,23 @@ python scripts/reconcile_cur.py \\
 ```
 
 The script updates the existing prediction record using a conditional DynamoDB update, preserving the idempotency guarantees of the ledger.
+
+## Post-merge verification lifecycle
+
+CostGate schedules billing verification only after a pull request is merged. The GitHub `pull_request.closed` event is accepted when `merged=true`; the exact analyzed PR head SHA is used to locate the prediction record. Verification windows are aligned to UTC calendar days because the configured CUR 2.0 export is daily.
+
+Lifecycle:
+
+```text
+PR analyzed → prediction persisted
+      ↓
+PR merged → verification_pending
+      ↓
+next UTC day → candidate billing window
+      ↓
+CUR delivery available → Athena query
+      ↓
+PredictionLedger.mark_reconciled()
+```
+
+If CUR has not delivered rows for either verification window, reconciliation remains pending and the hourly job retries later. CostGate never interprets missing CUR data as `$0` actual spend.

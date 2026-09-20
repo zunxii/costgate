@@ -50,12 +50,26 @@ def lambda_handler(
             maxsplit=1,
         )
 
-        processor.process(
-            owner=owner,
-            repo=repo,
-            pull_number=pull_number,
-            delivery_id=message.get("delivery_id"),
-        )
+        if message.get("action") == "closed" and message.get("merged"):
+            scheduled = processor.schedule_verification(
+                owner=owner,
+                repo=repo,
+                pull_number=pull_number,
+                head_sha=message.get("head_sha"),
+                merged_at=message.get("merged_at"),
+                delivery_id=message.get("delivery_id"),
+            )
+            if scheduled.get("status") == "prediction_not_found":
+                raise RuntimeError(
+                    "Merged PR prediction is not persisted yet; retrying SQS message."
+                )
+        else:
+            processor.process(
+                owner=owner,
+                repo=repo,
+                pull_number=pull_number,
+                delivery_id=message.get("delivery_id"),
+            )
 
     return {
         "status": "success",

@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from datetime import datetime, timezone
+from datetime import datetime, time as dt_time, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Protocol
 
@@ -83,6 +83,91 @@ class PullRequestEventProcessor:
             "COSTGATE_ENABLE_EXPLANATION",
             "false",
         ).lower() in ("1", "true", "yes")
+
+
+    @staticmethod
+    def _prediction_id(owner: str, repo: str, pull_number: int, head_sha: str) -> str:
+        return hashlib.sha256(
+            f"{owner}/{repo}:{pull_number}:{head_sha}".encode("utf-8")
+        ).hexdigest()[:32]
+
+    @staticmethod
+    def _verification_windows(merged_at: str) -> dict[str, str]:
+        parsed = datetime.fromisoformat(merged_at.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        parsed = parsed.astimezone(timezone.utc)
+
+        candidate_start = datetime.combine(
+            parsed.date() + timedelta(days=1),
+            dt_time.min,
+            tzinfo=timezone.utc,
+        )
+        candidate_end = candidate_start + timedelta(days=1)
+        baseline_start = candidate_start - timedelta(days=1)
+        baseline_end = candidate_start
+
+        delay_hours = max(
+            0,
+            int(os.getenv("COSTGATE_VERIFICATION_DELAY_HOURS", "24")),
+        )
+        verification_due_at = candidate_end + timedelta(hours=delay_hours)
+
+        return {
+            "merged_at": parsed.isoformat(),
+            "verification_due_at": verification_due_at.isoformat(),
+            "baseline_window_start": baseline_start.isoformat(),
+            "baseline_window_end": baseline_end.isoformat(),
+            "candidate_window_start": candidate_start.isoformat(),
+            "candidate_window_end": candidate_end.isoformat(),
+        }
+
+    def schedule_verification(
+        self,
+        *,
+        owner: str,
+        repo: str,
+        pull_number: int,
+        head_sha: str | None,
+        merged_at: str | None,
+        delivery_id: str | None = None,
+    ) -> dict[str, Any]:
+        if not head_sha or not merged_at:
+            raise ValueError("Merged pull request event is missing head SHA or merged_at.")
+
+        prediction_id = self._prediction_id(
+            owner,
+            repo,
+            pull_number,
+            head_sha,
+        )
+        windows = self._verification_windows(merged_at)
+
+        prediction = self.ledger.schedule_verification(
+            prediction_id=prediction_id,
+            merged_at=windows["merged_at"],
+            verification_due_at=windows["verification_due_at"],
+            verification_source="aws_cur_2",
+            verification_delivery_id=delivery_id,
+            baseline_window_start=windows["baseline_window_start"],
+            baseline_window_end=windows["baseline_window_end"],
+            candidate_window_start=windows["candidate_window_start"],
+            candidate_window_end=windows["candidate_window_end"],
+        )
+
+        if prediction is None:
+            existing = self.ledger.get(prediction_id)
+            return {
+                "status": "already_scheduled" if existing else "prediction_not_found",
+                "prediction_id": prediction_id,
+            }
+
+        return {
+            "status": "verification_scheduled",
+            "prediction_id": prediction_id,
+            "verification_due_at": prediction.verification_due_at,
+            "delivery_id": delivery_id,
+        }
 
     def process(
         self,
@@ -223,13 +308,12 @@ class PullRequestEventProcessor:
             body=comment_body,
         )
 
-        prediction_id = hashlib.sha256(
-            (
-                f"{owner}/{repo}:"
-                f"{pull_number}:"
-                f"{pr.head_sha}"
-            ).encode("utf-8")
-        ).hexdigest()[:32]
+        prediction_id = self._prediction_id(
+            owner,
+            repo,
+            pull_number,
+            pr.head_sha,
+        )
 
         prediction = PredictionRecord(
             prediction_id=prediction_id,

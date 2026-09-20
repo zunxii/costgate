@@ -27,6 +27,8 @@ def enqueue_webhook_event(
     if not pull_number:
         raise ValueError("Webhook payload has no pull request number.")
 
+    pull_request = webhook.payload.get("pull_request", {})
+
     message = {
         "delivery_id": webhook.delivery_id,
         "event": webhook.event_type,
@@ -34,6 +36,17 @@ def enqueue_webhook_event(
         "repository": repository_name,
         "pull_number": pull_number,
     }
+
+    if webhook.action == "closed":
+        # Use pull_request.head.sha, not merge_commit_sha. The prediction ID
+        # is keyed to the exact head analyzed before merge.
+        message.update(
+            {
+                "merged": bool(pull_request.get("merged", False)),
+                "merged_at": pull_request.get("merged_at"),
+                "head_sha": pull_request.get("head", {}).get("sha"),
+            }
+        )
 
     sqs = boto3.client("sqs")
 
@@ -188,7 +201,21 @@ def lambda_handler(
         "opened",
         "reopened",
         "synchronize",
+        "closed",
     }
+
+    if webhook.action == "closed" and not webhook.payload.get("pull_request", {}).get("merged", False):
+        return {
+            "statusCode": 200,
+            "body": json.dumps(
+                {
+                    "status": "ignored",
+                    "event": "pull_request",
+                    "action": "closed",
+                    "reason": "pull request was closed without merging",
+                }
+            ),
+        }
 
     if webhook.action not in supported_actions:
         return {

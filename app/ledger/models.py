@@ -46,6 +46,16 @@ class PredictionRecord:
     check_run_id: int | None = None
     check_run_url: str | None = None
 
+    # Post-merge billing verification lifecycle.
+    merged_at: str | None = None
+    verification_due_at: str | None = None
+    verification_source: str | None = None
+    verification_delivery_id: str | None = None
+    baseline_window_start: str | None = None
+    baseline_window_end: str | None = None
+    candidate_window_start: str | None = None
+    candidate_window_end: str | None = None
+
     def to_item(self) -> dict:
         item = asdict(self)
 

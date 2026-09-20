@@ -1,7 +1,13 @@
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from app.billing.athena_cur import AthenaCURBillingSource, CostWindow
+import pytest
+
+from app.billing.athena_cur import (
+    AthenaCURBillingSource,
+    CURDataUnavailable,
+    CostWindow,
+)
 
 
 class FakeExecutor:
@@ -11,8 +17,8 @@ class FakeExecutor:
     def query(self, sql):
         self.sql = sql
         return [
-            ["baseline_cost_usd", "candidate_cost_usd"],
-            ["5.7600", "5.8440"],
+            ["baseline_cost_usd", "candidate_cost_usd", "baseline_row_count", "candidate_row_count"],
+            ["5.7600", "5.8440", "3", "3"],
         ]
 
 
@@ -62,3 +68,26 @@ def test_athena_cur_rejects_overlapping_windows():
         assert "may not overlap" in str(exc)
     else:
         raise AssertionError("Expected overlapping-window validation")
+
+
+def test_athena_cur_keeps_pending_when_data_has_not_arrived():
+    class EmptyWindowExecutor:
+        def query(self, sql):
+            return [
+                ["baseline_cost_usd", "candidate_cost_usd", "baseline_row_count", "candidate_row_count"],
+                ["0", "0", "3", "0"],
+            ]
+
+    source = AthenaCURBillingSource(
+        table="cur_db.cost_and_usage_report",
+        executor=EmptyWindowExecutor(),
+    )
+
+    with pytest.raises(CURDataUnavailable):
+        source.get_actual_monthly_delta(
+            resource_id="costgate-db",
+            baseline_start=datetime(2026, 9, 1, tzinfo=timezone.utc),
+            baseline_end=datetime(2026, 9, 2, tzinfo=timezone.utc),
+            candidate_start=datetime(2026, 9, 2, tzinfo=timezone.utc),
+            candidate_end=datetime(2026, 9, 3, tzinfo=timezone.utc),
+        )

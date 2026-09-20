@@ -38,7 +38,8 @@ def main() -> None:
     parser.add_argument("--database", default=os.getenv("CUR_DATABASE"))
     parser.add_argument("--workgroup", default=os.getenv("CUR_WORKGROUP", "primary"))
     parser.add_argument("--output-location", default=os.getenv("CUR_QUERY_RESULTS_S3_URI"))
-    parser.add_argument("--region", default=os.getenv("CUR_REGION", "eu-north-1"))
+    parser.add_argument("--region", default=os.getenv("CUR_REGION", "us-east-1"))
+    parser.add_argument("--ledger-region", default=os.getenv("LEDGER_REGION", "eu-north-1"))
     args = parser.parse_args()
 
     missing = [
@@ -58,7 +59,7 @@ def main() -> None:
 
     dynamodb = boto3.resource(
         "dynamodb",
-        region_name=args.region,
+        region_name=args.ledger_region,
     )
     table_name = os.environ["PREDICTION_TABLE_NAME"]
     ledger = PredictionLedger(dynamodb.Table(table_name))

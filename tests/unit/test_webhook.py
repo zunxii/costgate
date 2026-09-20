@@ -206,3 +206,37 @@ def test_lambda_handler_ignores_non_pull_request_event():
 
     assert result["status"] == "ignored"
     assert result["event"] == "issues"
+
+def test_lambda_handler_queues_merged_pull_request(monkeypatch):
+    body = json.dumps({
+        "action": "closed",
+        "number": 4,
+        "repository": {"full_name": "zunxii/costgate"},
+        "pull_request": {
+            "merged": True,
+            "merged_at": "2026-09-20T12:00:00Z",
+            "head": {"sha": "abc123"},
+        },
+    }).encode("utf-8")
+
+    monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", SECRET)
+    monkeypatch.setenv("WEBHOOK_QUEUE_URL", "https://sqs.eu-north-1.amazonaws.com/123/costgate-test")
+    fake_sqs = FakeSQSClient()
+    monkeypatch.setattr(webhook_handler.boto3, "client", lambda service_name: fake_sqs)
+
+    response = lambda_handler({
+        "headers": {
+            "X-Hub-Signature-256": _sign(body),
+            "X-GitHub-Event": "pull_request",
+            "X-GitHub-Delivery": "merge-delivery",
+        },
+        "body": body.decode(),
+        "isBase64Encoded": False,
+    }, None)
+
+    assert response["statusCode"] == 202
+    queued = json.loads(fake_sqs.messages[0]["MessageBody"])
+    assert queued["action"] == "closed"
+    assert queued["merged"] is True
+    assert queued["merged_at"] == "2026-09-20T12:00:00Z"
+    assert queued["head_sha"] == "abc123"

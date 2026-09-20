@@ -142,3 +142,71 @@ class GitHubClient:
             f"/repos/{owner}/{repo}/issues/comments/{comment_id}",
             json={"body": body},
         )
+
+    def create_check_run(
+    self,
+    *,
+    owner: str,
+    repo: str,
+    name: str,
+    head_sha: str,
+    conclusion: str,
+    title: str,
+    summary: str,
+    text: str,
+) -> dict[str, Any]:
+        return self._request(
+            "POST",
+            f"/repos/{owner}/{repo}/check-runs",
+            json={
+                "name": name,
+                "head_sha": head_sha,
+                "status": "completed",
+                "conclusion": conclusion,
+                "output": {
+                    "title": title,
+                    "summary": summary,
+                    "text": text,
+                },
+            },
+        )
+
+    def list_check_runs(
+        self,
+        *,
+        owner: str,
+        repo: str,
+        head_sha: str,
+        per_page: int = 100,
+    ) -> list[dict[str, Any]]:
+        response = self._request(
+            "GET",
+            f"/repos/{owner}/{repo}/commits/{head_sha}/check-runs",
+            params={"per_page": per_page},
+        )
+        return response.get("check_runs", [])
+
+    def update_check_run(
+        self,
+        *,
+        owner: str,
+        repo: str,
+        check_run_id: int,
+        conclusion: str,
+        title: str,
+        summary: str,
+        text: str,
+    ) -> dict[str, Any]:
+        return self._request(
+            "PATCH",
+            f"/repos/{owner}/{repo}/check-runs/{check_run_id}",
+            json={
+                "status": "completed",
+                "conclusion": conclusion,
+                "output": {
+                    "title": title,
+                    "summary": summary,
+                    "text": text,
+                },
+            },
+        )

@@ -1,8 +1,8 @@
 from __future__ import annotations
-from decimal import Decimal
 
 import json
 import os
+from decimal import Decimal
 from typing import Any
 
 from app.analyzer.query_analyzer import QueryAnalyzer
@@ -52,8 +52,8 @@ def lambda_handler(
                 _required_env("COSTGATE_MONTHLY_REQUESTS")
             ),
             db_instance_hourly_cost_usd=Decimal(
-    _required_env("RDS_INSTANCE_HOURLY_USD")
-),
+                _required_env("RDS_INSTANCE_HOURLY_USD")
+            ),
         )
 
         pricing = get_rds_pricing(
@@ -78,11 +78,40 @@ def lambda_handler(
         return {
             "status": "success",
             "comment_body": comment_body,
+
             "monthly_delta": str(
                 result.cost_estimate.monthly_delta
             ),
+            "lower_bound": str(
+                result.cost_estimate.lower_bound
+            ),
+            "upper_bound": str(
+                result.cost_estimate.upper_bound
+            ),
+
             "confidence": result.cost_estimate.confidence.value,
             "direction": result.cost_estimate.direction.value,
+
+            "baseline_execution_ms": (
+                result.baseline.execution_time_ms
+            ),
+            "candidate_execution_ms": (
+                result.candidate.execution_time_ms
+            ),
+
+            "baseline_rows": result.baseline.rows_returned,
+            "candidate_rows": result.candidate.rows_returned,
+
+            "baseline_scan_type": (
+                result.baseline.scan_type.value
+            ),
+            "candidate_scan_type": (
+                result.candidate.scan_type.value
+            ),
+
+            "resource_id": _required_env(
+                "RDS_RESOURCE_ID"
+            ),
         }
 
     except CostGateError as exc:

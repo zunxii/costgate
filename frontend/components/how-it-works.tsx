@@ -14,7 +14,7 @@ const STEPS = [
   {
     num: "01",
     title: "Webhook Ingestion",
-    desc: "Validates GitHub payload and queues to SQS FIFO.",
+    desc: "Validates the GitHub webhook and queues a standard Amazon SQS message for asynchronous processing.",
     icon: GitPullRequest,
   },
   {
@@ -26,13 +26,13 @@ const STEPS = [
   {
     num: "03",
     title: "Shadow Execution",
-    desc: "Runs EXPLAIN ANALYZE inside a private VPC.",
+    desc: "Runs EXPLAIN ANALYZE through the VPC-connected analysis worker against the configured PostgreSQL environment.",
     icon: Database,
   },
   {
     num: "04",
-    title: "Cost Fixes",
-    desc: "Posts committable index fixes to your PR.",
+    title: "PR Cost Decision",
+    desc: "Posts the deterministic cost analysis and policy Check/Comment back to the pull request.",
     icon: CheckCircle2,
   },
 ];
@@ -47,7 +47,7 @@ export function HowItWorks() {
             How it works under the hood
           </h2>
           <p className="mt-4 text-slate-500 text-lg">
-            A secure, event-driven architecture designed to keep your production database totally isolated.
+            An event-driven architecture that keeps analysis off the public API path and targets the configured shadow/staging PostgreSQL environment.
           </p>
         </div>
 

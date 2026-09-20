@@ -27,6 +27,8 @@ class PredictionRecord:
     baseline_scan_type: str
     candidate_scan_type: str
 
+    # Optional tenant association. Kept after required prediction fields so the dataclass remains valid for existing callers.
+    user_id: str | None = None
     status: str = "predicted"
 
     actual_monthly_delta: Decimal | None = None
@@ -53,8 +55,8 @@ class PredictionRecord:
     candidate_window_end: str | None = None
 
     def to_item(self) -> dict:
-    # DynamoDB GSI key attributes must be absent when they are not set.
-    # Do not write Python None values as DynamoDB NULL values.
+        # DynamoDB GSI key attributes must be absent when they are not set.
+        # Do not write Python None values as DynamoDB NULL values.
         item = {
             key: value
             for key, value in asdict(self).items()

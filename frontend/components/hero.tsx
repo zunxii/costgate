@@ -9,12 +9,12 @@ import { cn } from "@/lib/utils";
 
 const TYPING_SPEED = 50;
 const CODE_LINES = [
-  "git checkout -b feature/optimize-queries",
-  "costgate analyze --pr=124",
-  "Analyzing... 3 seq scans detected.",
-  "Cost delta: +$142/mo",
-  "Auto-fixing with suggested indexes...",
-  "Done. PR updated.",
+  "GitHub webhook received",
+  "SQS event queued",
+  "Extracting supported SQL change",
+  "VPC worker running EXPLAIN (ANALYZE, BUFFERS)",
+  "Cost policy evaluated",
+  "Prediction persisted + GitHub check published",
 ];
 
 export function Hero() {
@@ -87,7 +87,7 @@ export function Hero() {
           transition={{ duration: 0.7, delay: 0.2, type: "spring", bounce: 0.2 }}
           className="mt-6 max-w-2xl text-lg sm:text-xl text-slate-500 text-center leading-relaxed"
         >
-          A developer-first CI guardrail. We run <code className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-800 font-mono text-sm border border-slate-200">EXPLAIN ANALYZE</code> on every PR to catch sequential scans and AWS bill spikes automatically.
+          A developer-first CI guardrail. For supported SQL changes, CostGate runs <code className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-800 font-mono text-sm border border-slate-200">EXPLAIN ANALYZE</code> in the analysis worker and evaluates the resulting cost impact.
         </motion.p>
 
         {/* Action CTAs */}
@@ -100,8 +100,7 @@ export function Hero() {
           <motion.a
             whileHover={{ y: -2 }}
             whileTap={{ scale: 0.98 }}
-            href="https://github.com/apps"
-            target="_blank"
+            href="/signup"
             className="flex items-center justify-center w-full sm:w-auto bg-slate-900 text-white font-medium text-[15px] h-12 px-8 rounded-lg shadow-sm hover:shadow-md hover:bg-slate-800 transition-all"
           >
             <span>Start Free Trial</span>
@@ -110,8 +109,9 @@ export function Hero() {
           <motion.a
             whileHover={{ y: -2 }}
             whileTap={{ scale: 0.98 }}
-            href="https://github.com"
+            href="https://github.com/zunxii/costgate"
             target="_blank"
+            rel="noopener noreferrer"
             className="flex items-center justify-center w-full sm:w-auto bg-white text-slate-700 font-medium text-[15px] h-12 px-8 rounded-lg border border-slate-200 shadow-sm hover:shadow-md hover:bg-slate-50 transition-all"
           >
             <GithubIcon className="size-4 mr-2" />

@@ -140,12 +140,12 @@ export function Navbar() {
               View on GitHub
             </a>
             <a
-              href="https://github.com/apps"
+              href="/signup"
               target="_blank"
               rel="noopener noreferrer"
               className={cn(buttonVariants({ size: "default" }), "w-full font-semibold")}
             >
-              Install Free Trial
+              Start Free Trial
             </a>
           </div>
         </div>

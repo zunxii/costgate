@@ -103,6 +103,7 @@ def calculate_cost_impact(
     monthly_delta = (
         monthly_compute_hours
         * pricing.db_instance_hourly_usd
+        * Decimal(str(assumptions.billing_multiplier))
     )
 
     monthly_delta = monthly_delta.quantize(
@@ -137,6 +138,7 @@ def calculate_cost_impact(
             "method": "attributed_database_compute",
             "monthly_requests": assumptions.monthly_requests,
             "effective_parallelism": assumptions.effective_parallelism,
+            "billing_multiplier": assumptions.billing_multiplier,
             "db_instance": pricing.instance_class,
             "db_hourly_price_usd": str(
                 pricing.db_instance_hourly_usd

@@ -14,37 +14,37 @@ import { cn } from "@/lib/utils";
 const TRUSTED_BY = [
   { name: "PostgreSQL 16", label: "Plan AST" },
   { name: "AWS RDS Aurora", label: "FinOps Engine" },
-  { name: "GitHub Actions", label: "CI Check Runs" },
-  { name: "Terraform", label: "IaC Drift Guard" },
-  { name: "SOC2 Type II", label: "Zero Egress" },
+  { name: "GitHub Checks", label: "PR status" },
+  { name: "Amazon SQS", label: "Async queueing" },
+  { name: "Amazon DynamoDB", label: "Prediction ledger" },
 ];
 
 const EXPLORE_CARDS = [
   {
     title: "PR Studio Workbench",
     href: "/demo",
-    description: "Inspect simulated PR diffs, AST comparison trees, and commit one-click fixes.",
+    description: "Inspect live pull requests from repositories connected through the GitHub App and run the real analysis worker.",
     icon: GitPullRequest,
-    badge: "Interactive",
+    badge: "Authenticated",
   },
   {
     title: "FinOps Cost Simulator",
     href: "/calculator",
-    description: "Slide query frequencies and RDS instance sizes to model AWS bill impact.",
+    description: "Send baseline/candidate execution times and workload assumptions to the backend cost engine.",
     icon: Calculator,
-    badge: "ROI Modeler",
+    badge: "Cost Engine",
   },
   {
     title: "Pipeline Architecture",
     href: "/architecture",
-    description: "SQS FIFO queues, ephemeral VPC worker sandboxes, and timeout guards.",
+    description: "See the deployed SAM resources: GitHub webhook, SQS, Lambda processor, VPC analysis worker, DynamoDB ledger and optional Athena reconciliation.",
     icon: Layers,
     badge: "Architecture",
   },
   {
     title: "Zero-Trust Security",
     href: "/security",
-    description: "Read-only transactions, automated rollbacks, and zero data egress.",
+    description: "Read-only transactions, statement timeouts, VPC isolation controls, and scoped GitHub App permissions.",
     icon: Shield,
     badge: "Enterprise",
   },
@@ -107,7 +107,7 @@ export default function Home() {
               Watch CostGate guard your cloud budget in real time.
             </h2>
             <p className="mt-6 text-lg text-slate-500 leading-relaxed font-light">
-              Auto-cycling audit phases showing how AST trees turn into committable FinOps suggestions right inside your Pull Request.
+              A visual walkthrough of the implemented webhook → queue → SQL extraction → VPC analysis → cost policy pipeline.
             </p>
           </motion.div>
           

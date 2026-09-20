@@ -16,6 +16,17 @@ Parameters:
   GitHubInstallationId:
     Type: String
     Default: "162807620"
+    Description: Optional legacy/default installation used by older worker flows; webhook events use their installation id.
+
+  GitHubAppSlug:
+    Type: String
+    Default: "costgate-bot"
+
+  AuthJwtSecret:
+    Type: String
+    NoEcho: true
+    MinLength: 32
+    Description: HMAC secret shared by the CostGate API and the Next.js BFF for authenticated sessions
 
   RdsHost:
     Type: String
@@ -43,7 +54,7 @@ Parameters:
     Default: "1000000"
 
   # Optional real CUR 2.0 / Athena configuration. These are not
-  # required for the mock-CUR hackathon demo.
+  # optional for deployments that use AWS CUR reconciliation.
   CurDatabase:
     Type: String
     Default: ""
@@ -106,7 +117,6 @@ Resources:
       RedrivePolicy:
         deadLetterTargetArn: !GetAtt WebhookDeadLetterQueue.Arn
         maxReceiveCount: 3
-
   # ------------------------------------------------------------------
   # Public GitHub webhook
   # ------------------------------------------------------------------
@@ -158,6 +168,8 @@ Resources:
           AttributeType: S
         - AttributeName: verification_due_at
           AttributeType: S
+        - AttributeName: user_id
+          AttributeType: S
 
       KeySchema:
         - AttributeName: prediction_id
@@ -191,12 +203,25 @@ Resources:
           Projection:
             ProjectionType: ALL
 
+        - IndexName: UserCreatedAtIndex
+          KeySchema:
+            - AttributeName: user_id
+              KeyType: HASH
+            - AttributeName: created_at
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
   # ------------------------------------------------------------------
   # GitHub PR processor
   # ------------------------------------------------------------------
 
   ProcessorFunction:
     Type: AWS::Serverless::Function
+
+    Metadata:
+      BuildMethod: makefile
+
     Properties:
       CodeUri: .
       Handler: app.handlers.processor.lambda_handler
@@ -211,6 +236,9 @@ Resources:
 
           GITHUB_PRIVATE_KEY: '{{resolve:secretsmanager:costgate/github/private-key:SecretString}}'
           PREDICTION_TABLE_NAME: !Ref PredictionLedgerTable
+          CONNECTION_TABLE_NAME: !Ref ConnectionTable
+          POLICY_TABLE_NAME: !Ref PolicyTable
+          PR_STUDIO_JOB_TABLE_NAME: !Ref PRStudioJobTable
           BEDROCK_MODEL_ID: "eu.anthropic.claude-haiku-4-5-20251001-v1:0"
           COSTGATE_ENABLE_EXPLANATION: "false"
           COSTGATE_ENABLE_CHECK: "true"
@@ -237,7 +265,8 @@ Resources:
             - Effect: Allow
               Action:
                 - lambda:InvokeFunction
-              Resource: !GetAtt AnalysisFunction.Arn
+              Resource:
+                - !GetAtt AnalysisFunction.Arn
 
             - Effect: Allow
               Action:
@@ -248,17 +277,20 @@ Resources:
               Resource:
                 - !GetAtt PredictionLedgerTable.Arn
                 - !Sub "${PredictionLedgerTable.Arn}/index/*"
+                - !GetAtt ConnectionTable.Arn
+                - !Sub "${ConnectionTable.Arn}/index/*"
+                - !GetAtt PolicyTable.Arn
+                - !GetAtt PRStudioJobTable.Arn
+
             - Effect: Allow
               Action:
                 - bedrock:InvokeModel
                 - bedrock:GetInferenceProfile
               Resource:
-                # EU Claude Haiku 4.5 inference profile
                 - !Sub >-
                     arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/
                     eu.anthropic.claude-haiku-4-5-20251001-v1:0
 
-                # Destination foundation models used by the EU profile
                 - arn:aws:bedrock:eu-central-1::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0
                 - arn:aws:bedrock:eu-north-1::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0
                 - arn:aws:bedrock:eu-south-1::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0
@@ -272,8 +304,13 @@ Resources:
           Properties:
             Queue: !GetAtt WebhookQueue.Arn
             BatchSize: 1
+
   ReconciliationFunction:
     Type: AWS::Serverless::Function
+
+    Metadata:
+      BuildMethod: makefile
+
     Properties:
       CodeUri: .
       Handler: app.handlers.reconcile.lambda_handler
@@ -301,6 +338,7 @@ Resources:
               Resource:
                 - !GetAtt PredictionLedgerTable.Arn
                 - !Sub "${PredictionLedgerTable.Arn}/index/*"
+
             - Effect: Allow
               Action:
                 - athena:StartQueryExecution
@@ -308,11 +346,13 @@ Resources:
                 - athena:GetQueryResults
                 - athena:GetWorkGroup
               Resource: "*"
+
             - Effect: Allow
               Action:
                 - s3:GetBucketLocation
                 - s3:ListBucket
               Resource: !Ref CurQueryResultsBucketArn
+
             - Effect: Allow
               Action:
                 - s3:GetObject
@@ -326,56 +366,177 @@ Resources:
           Properties:
             Schedule: "rate(1 hour)"
             Enabled: true
+  # ------------------------------------------------------------------
+  # Authenticated application API
+  # ------------------------------------------------------------------
+
+  UserTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: user_id
+          AttributeType: S
+        - AttributeName: email
+          AttributeType: S
+        - AttributeName: github_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: user_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: EmailIndex
+          KeySchema:
+            - AttributeName: email
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: GithubIdIndex
+          KeySchema:
+            - AttributeName: github_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+  ConnectionTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: connection_id
+          AttributeType: S
+        - AttributeName: user_id
+          AttributeType: S
+        - AttributeName: repository
+          AttributeType: S
+        - AttributeName: installation_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: connection_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: UserRepoIndex
+          KeySchema:
+            - AttributeName: user_id
+              KeyType: HASH
+            - AttributeName: repository
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: InstallationRepoIndex
+          KeySchema:
+            - AttributeName: installation_id
+              KeyType: HASH
+            - AttributeName: repository
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+  PolicyTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: user_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: user_id
+          KeyType: HASH
+
+  PRStudioJobTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: job_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: job_id
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: expires_at
+        Enabled: true
 
   DashboardFunction:
     Type: AWS::Serverless::Function
+
+    Metadata:
+      BuildMethod: makefile
+
     Properties:
       CodeUri: .
-      Handler: app.handlers.dashboard.lambda_handler
-      Timeout: 15
+      Handler: app.handlers.api.lambda_handler
+      Timeout: 30
 
       Environment:
         Variables:
           PREDICTION_TABLE_NAME: !Ref PredictionLedgerTable
+          USER_TABLE_NAME: !Ref UserTable
+          CONNECTION_TABLE_NAME: !Ref ConnectionTable
+          POLICY_TABLE_NAME: !Ref PolicyTable
+          AUTH_JWT_SECRET: !Ref AuthJwtSecret
+          GITHUB_APP_ID: !Ref GitHubAppId
+          GITHUB_INSTALLATION_ID: !Ref GitHubInstallationId
+          GITHUB_APP_SLUG: !Ref GitHubAppSlug
+          GITHUB_PRIVATE_KEY: '{{resolve:secretsmanager:costgate/github/private-key:SecretString}}'
+          ANALYSIS_FUNCTION_NAME: !Ref AnalysisFunction
+          PROCESSOR_FUNCTION_NAME: !Ref ProcessorFunction
+          PR_STUDIO_JOB_TABLE_NAME: !Ref PRStudioJobTable
 
       Policies:
         - Version: "2012-10-17"
           Statement:
             - Effect: Allow
               Action:
-                - dynamodb:Scan
-              Resource: !GetAtt PredictionLedgerTable.Arn
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+                - dynamodb:UpdateItem
+                - dynamodb:DeleteItem
+                - dynamodb:Query
+                - dynamodb:BatchWriteItem
+              Resource:
+                - !GetAtt UserTable.Arn
+                - !Sub "${UserTable.Arn}/index/*"
+                - !GetAtt ConnectionTable.Arn
+                - !Sub "${ConnectionTable.Arn}/index/*"
+                - !GetAtt PolicyTable.Arn
+                - !GetAtt PredictionLedgerTable.Arn
+                - !Sub "${PredictionLedgerTable.Arn}/index/*"
+                - !GetAtt PRStudioJobTable.Arn
+
+            - Effect: Allow
+              Action:
+                - lambda:InvokeFunction
+              Resource:
+                - !GetAtt AnalysisFunction.Arn
+                - !GetAtt ProcessorFunction.Arn
 
       Events:
-        Dashboard:
+        Api:
           Type: HttpApi
           Properties:
-            Path: /dashboard
-            Method: GET
+            Path: /api/{proxy+}
+            Method: ANY
 
-        DashboardSummary:
-          Type: HttpApi
-          Properties:
-            Path: /api/dashboard/summary
-            Method: GET
-
-        DashboardAuthors:
-          Type: HttpApi
-          Properties:
-            Path: /api/dashboard/authors
-            Method: GET
-
-        DashboardPredictions:
-          Type: HttpApi
-          Properties:
-            Path: /api/dashboard/predictions
-            Method: GET
+      
   # ------------------------------------------------------------------
   # Database analysis worker
   # ------------------------------------------------------------------
 
   AnalysisFunction:
     Type: AWS::Serverless::Function
+
+    Metadata:
+      BuildMethod: makefile
+
     Properties:
       CodeUri: .
       Handler: app.handlers.analyze.lambda_handler
@@ -407,14 +568,7 @@ Resources:
 
       Policies:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
-
 Outputs:
-
-  WebhookUrl:
-    Description: GitHub webhook endpoint
-    Value: !Sub
-      - "https://${ApiId}.execute-api.${AWS::Region}.amazonaws.com/github/webhook"
-      - ApiId: !Ref ServerlessHttpApi
 
   WebhookQueueUrl:
     Description: CostGate webhook SQS queue

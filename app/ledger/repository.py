@@ -167,6 +167,27 @@ class PredictionLedger:
 
         return self._from_item(response["Attributes"])
 
+
+    def list_for_user(self, user_id: str, *, limit: int = 200) -> list[dict[str, Any]]:
+        """Return prediction items belonging to one authenticated CostGate account."""
+        items: list[dict[str, Any]] = []
+        last_key = None
+        while len(items) < limit:
+            params: dict[str, Any] = {
+                "IndexName": "UserCreatedAtIndex",
+                "KeyConditionExpression": Key("user_id").eq(user_id),
+                "ScanIndexForward": False,
+                "Limit": min(100, limit - len(items)),
+            }
+            if last_key:
+                params["ExclusiveStartKey"] = last_key
+            response = self.table.query(**params)
+            items.extend(response.get("Items", []))
+            last_key = response.get("LastEvaluatedKey")
+            if not last_key:
+                break
+        return items[:limit]
+
     def get(self, prediction_id: str) -> PredictionRecord | None:
         response = self.table.get_item(
             Key={"prediction_id": prediction_id}
@@ -183,6 +204,7 @@ class PredictionLedger:
         return PredictionRecord(
             prediction_id=item["prediction_id"],
             repository=item["repository"],
+            user_id=item.get("user_id"),
             pull_request_number=int(item["pull_request_number"]),
             commit_sha=item["commit_sha"],
             author=item["author"],

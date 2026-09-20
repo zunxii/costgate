@@ -8,8 +8,6 @@ import {
   AlertTriangle, 
   CheckCircle2, 
   Sparkles, 
-  Copy, 
-  Check, 
   Database,
   ArrowRight,
   ShieldAlert
@@ -23,19 +21,11 @@ interface PRDetailModalProps {
 }
 
 export function PRDetailModal({ prediction, onClose }: PRDetailModalProps) {
-  const [copied, setCopied] = useState(false);
-  const [appliedFix, setAppliedFix] = useState(false);
 
   if (!prediction) return null;
 
-  const isBlock = prediction.direction === "increase" && prediction.predicted_monthly_delta >= 25;
-  const isWarn = prediction.direction === "increase" && prediction.predicted_monthly_delta >= 5;
-
-  const handleCopy = (text: string) => {
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
+  const isBlock = prediction.policy_verdict === "block";
+  const isWarn = prediction.policy_verdict === "warn";
 
   return (
     <AnimatePresence>
@@ -131,7 +121,7 @@ export function PRDetailModal({ prediction, onClose }: PRDetailModalProps) {
                   AST Scan Method
                 </div>
                 <div className="text-xs font-mono font-bold text-slate-900 truncate mt-1">
-                  {prediction.scan_type || "Full Table Scan (4.2M rows)"}
+                  {prediction.candidate_scan_type || "Not recorded"}
                 </div>
               </div>
 
@@ -140,7 +130,7 @@ export function PRDetailModal({ prediction, onClose }: PRDetailModalProps) {
                   Execution Latency
                 </div>
                 <div className="text-xs font-mono font-bold text-slate-900 mt-1">
-                  {prediction.runtime || "842.18 ms"}
+                  {prediction.candidate_execution_ms != null ? `${Number(prediction.candidate_execution_ms).toFixed(2)} ms` : "Not recorded"}
                 </div>
               </div>
 
@@ -167,34 +157,24 @@ export function PRDetailModal({ prediction, onClose }: PRDetailModalProps) {
               <div className="rounded-2xl border border-slate-800 bg-slate-900 text-slate-200 p-4 font-mono text-[11px] leading-relaxed overflow-x-auto space-y-2">
                 <div className="text-slate-500 select-none">-- Before (Baseline Query)</div>
                 <div className="text-rose-400 bg-rose-500/10 p-1.5 rounded">
-                  - {prediction.before_query || "SELECT id, email FROM customers WHERE tenant_id = 42;"}
+                  - {"Query text is intentionally not persisted in the prediction ledger; inspect the PR in PR Studio for the live diff."}
                 </div>
                 <div className="text-slate-500 select-none pt-2">-- After (Candidate PR Query)</div>
                 <div className="text-amber-400 bg-amber-500/10 p-1.5 rounded">
-                  + {prediction.after_query || "SELECT id, email FROM customers WHERE LOWER(email) = 'user@acme.com';"}
+                  + {"Query text is intentionally not persisted in the prediction ledger; inspect the PR in PR Studio for the live diff."}
                 </div>
               </div>
             </div>
 
-            {/* Committable Fix Preview */}
-            <div className="rounded-2xl border border-orange-200 bg-orange-50/40 p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-orange-800 font-bold text-xs">
-                  <Sparkles className="size-4 text-orange-500" />
-                  CostGate Committable Fix Suggestion
-                </div>
-                <button
-                  onClick={() => handleCopy(prediction.fixed_query || prediction.after_query)}
-                  className="inline-flex items-center gap-1 text-[11px] text-orange-700 hover:text-orange-900 font-mono font-semibold"
-                >
-                  {copied ? <Check className="size-3 text-emerald-600" /> : <Copy className="size-3" />}
-                  <span>{copied ? "Copied" : "Copy Fix"}</span>
-                </button>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-2">
+              <div className="flex items-center gap-2 text-slate-800 font-bold text-xs">
+                <Database className="size-4 text-orange-500" />
+                Real analysis record
               </div>
-
-              <div className="bg-white border border-orange-200/80 rounded-xl p-3 font-mono text-[11px] text-slate-900 shadow-sm whitespace-pre-wrap">
-                {prediction.fixed_query || "SELECT id, email FROM customers WHERE email = 'user@acme.com'; -- Uses B-Tree index"}
+              <div className="text-[11px] text-slate-600 leading-relaxed">
+                This prediction was produced by the CostGate analysis worker and stored in the authenticated ledger. SQL source/diff is read live from GitHub in PR Studio rather than hardcoded here.
               </div>
+              {prediction.check_run_url && <a href={prediction.check_run_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[11px] font-semibold text-orange-700 hover:underline">Open GitHub Check Run <ArrowRight className="size-3" /></a>}
             </div>
           </div>
 

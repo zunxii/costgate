@@ -21,7 +21,7 @@ const SECURITY_PILLARS = [
     title: "Read-Only Transaction Isolation",
     badge: "Database Level",
     color: "text-[#ea580c]",
-    desc: "Every query executed against the shadow environment runs strictly inside a read-only transaction with unconditional rollback.",
+    desc: "Supported analysis queries run inside a PostgreSQL read-only transaction with a statement timeout; the analyzer does not permit write SQL.",
     code: `BEGIN;
 SET LOCAL default_transaction_read_only = on;
 SET LOCAL statement_timeout = '10000'; -- 10s kill switch
@@ -34,11 +34,11 @@ ROLLBACK; -- Zero persistent mutation`,
     title: "Private VPC Network Air-Gapping",
     badge: "Network Level",
     color: "text-[#ea580c]",
-    desc: "Workers and shadow database instances reside inside private AWS VPC subnets with zero public internet egress.",
+    desc: "The analysis Lambda is deployed with the VPC subnet and security-group configuration supplied to the SAM stack. Network egress depends on that AWS networking setup.",
     points: [
-      "No public internet access or external API callback pathways",
-      "VPC Security Groups restrict traffic strictly to intra-cluster workers",
-      "TLS 1.3 enforced for internal database communication",
+      "Analysis traffic is isolated from the public API path by the Lambda/VPC boundary",
+      "Security group IDs are supplied as deployment parameters for the analysis worker",
+      "Use the database TLS settings and security-group rules configured for your deployment"
     ],
   },
   {
@@ -46,12 +46,12 @@ ROLLBACK; -- Zero persistent mutation`,
     title: "Minimal GitHub App Scopes",
     badge: "Identity Level",
     color: "text-[#ea580c]",
-    desc: "Requires only the minimum permissions necessary to read pull request diffs and report back execution findings.",
+    desc: "Uses repository-scoped GitHub App access for pull-request inspection and write-back of analysis results.",
     points: [
-      "Repository Metadata: Read-only",
-      "Pull Requests & Contents: Read-only",
-      "Checks & Issues: Write-only (Posts PR comments and checks)",
-      "Zero read access to secrets, releases, or billing",
+      "Repository metadata: read-only",
+      "Pull requests and repository contents: read access for diff analysis",
+      "Checks and issue/comment surfaces: write access for analysis results",
+      "No application flow requests repository secrets or billing data",
     ],
   },
   {
@@ -59,20 +59,19 @@ ROLLBACK; -- Zero persistent mutation`,
     title: "Runaway Query Kill Switch",
     badge: "Compute Level",
     color: "text-red-600",
-    desc: "Queries encountering cartesian joins or lock waits are terminated at exactly 10,000 milliseconds.",
+    desc: "The analyzer configures a 10-second statement timeout and a 2-second lock timeout.",
     points: [
       "Hard timeout enforced via Postgres statement_timeout parameter",
-      "Worker process terminated and container reclaimed immediately",
-      "PR marked with P0 Timeout Block warning",
+      "The analyzer applies its configured statement timeout; the resulting policy decision is surfaced in the PR Check/comment"
     ],
   },
 ];
 
 const COMPLIANCE_ITEMS = [
-  { name: "SOC 2 Type II", status: "Audit Ready", desc: "Security, Availability, and Confidentiality principles." },
-  { name: "GDPR Compliant", status: "Certified", desc: "Zero customer PII or production rows ingested." },
-  { name: "ISO 27001", status: "Aligned", desc: "Cryptographic access control and IaC auditing." },
-  { name: "HIPAA Compatible", status: "BAA Available", desc: "Available for Enterprise deployments via isolated VPC." },
+  { name: "Session signing", status: "Implemented", desc: "HS256-signed CostGate sessions with a shared secret between the frontend BFF and API." },
+  { name: "GitHub App identity", status: "Implemented", desc: "Installation access is resolved from the authenticated GitHub identity instead of trusting a client-supplied installation id." },
+  { name: "DynamoDB scoping", status: "Implemented", desc: "Prediction, connection, policy and PR Studio job records are partitioned by authenticated user id." },
+  { name: "Read-only analysis", status: "Implemented", desc: "The analysis path uses read-only database execution controls; deployment security still depends on the configured database/VPC." },
 ];
 
 export default function SecurityPage() {
@@ -88,13 +87,13 @@ export default function SecurityPage() {
               <span className="text-[#ea580c] font-bold">Security & Trust Center</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-black text-slate-950 tracking-tight flex items-center gap-3">
-              <span>Zero-Trust Security Guarantees</span>
+              <span>Security Model</span>
               <span className="rounded-full bg-[#ff9900]/15 border border-[#ff9900]/30 text-[#ea580c] font-mono text-xs px-2.5 py-0.5 font-bold">
-                Enterprise
+                Implemented Controls
               </span>
             </h1>
             <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-2xl font-normal">
-              How CostGate analyzes execution plans without touching production data, modifying schemas, or violating compliance boundaries.
+              How CostGate isolates execution-plan analysis from the application path, avoids schema writes, and makes the database/VPC boundary explicit.
             </p>
           </div>
 
@@ -170,8 +169,8 @@ export default function SecurityPage() {
         {/* Compliance Checklist */}
         <div className="rounded-2xl bg-white p-6 space-y-4 shadow-xs border border-slate-200">
           <div className="border-b border-slate-100 pb-3">
-            <h3 className="font-bold text-base text-slate-950">Enterprise Compliance & Industry Certifications</h3>
-            <p className="text-xs text-slate-500">Engineered to conform with zero-data-retention security policies.</p>
+            <h3 className="font-bold text-base text-slate-950">Implemented Security Controls</h3>
+            <p className="text-xs text-slate-500">The page documents controls present in the current repository; it is not a certification claim.</p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">

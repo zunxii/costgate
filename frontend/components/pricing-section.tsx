@@ -7,56 +7,54 @@ import { buttonVariants } from "@/components/ui/button";
 
 const TIERS = [
   {
-    name: "Open Source SAM",
+    name: "Open Source AWS",
     price: "$0",
-    frequency: "free forever",
-    desc: "Deploy CostGate directly into your AWS account with our open-source Serverless Application Model template.",
+    frequency: "software license",
+    desc: "Deploy the repository directly into your AWS account with the included SAM template and keep the data path under your control.",
     features: [
       "Full source code access",
-      "Unlimited PR analyses",
-      "Deploys in your private AWS VPC",
-      "Connects to your shadow RDS/Postgres",
-      "Idempotent GitHub PR comments",
-      "Community GitHub support",
+      "Authenticated dashboard and PR Studio",
+      "GitHub App onboarding and repository scoping",
+      "Real PR cost analysis and policy checks",
+      "Cost Simulator backed by the Python engine",
+      "Optional CUR reconciliation",
     ],
-    cta: "Deploy SAM Template",
+    cta: "Deploy from GitHub",
     ctaLink: "https://github.com/zunxii/costgate",
     popular: false,
   },
   {
-    name: "Cloud Pro",
-    price: "$49",
-    frequency: "per repo / month",
-    desc: "Zero-infrastructure managed cloud service. Install the GitHub App in 60 seconds without managing Lambdas.",
+    name: "Application Trial",
+    price: "$0",
+    frequency: "current beta",
+    desc: "Create a CostGate account, connect GitHub, choose repositories, configure policy, and use the same authenticated application surfaces.",
     features: [
-      "Everything in Open Source",
-      "Zero AWS infrastructure to maintain",
-      "60-second GitHub App installation",
-      "Up to 500 PR analyses / month",
-      "Automated shadow database seeding",
-      "Slack / Discord webhook alerts",
-      "Priority email & GitHub support",
+      "Email/password or GitHub sign-in",
+      "GitHub App installation flow",
+      "Live repository and pull-request data",
+      "Async PR Studio analysis jobs",
+      "User-scoped dashboard and policy storage",
+      "Protected workspaces render account-backed data only",
     ],
-    cta: "Start 14-Day Free Trial",
-    ctaLink: "https://github.com/apps",
+    cta: "Start Free Trial",
+    ctaLink: "/signup",
     popular: true,
   },
   {
-    name: "Enterprise",
+    name: "Dedicated Deployment",
     price: "Custom",
-    frequency: "annual contract",
-    desc: "For security-sensitive organizations requiring dedicated private infrastructure, SLAs, and custom cost models.",
+    frequency: "deployment-specific",
+    desc: "Use the same AWS architecture in a dedicated environment when your team needs its own VPC, database, IAM boundaries, and cost assumptions.",
     features: [
-      "Everything in Cloud Pro",
-      "Dedicated isolated AWS VPC",
-      "Custom cost attribution formulas",
-      "Multi-region RDS & Aurora support",
-      "Custom CI merge blocking policies",
-      "SOC2 Type II & HIPAA compliance",
-      "Dedicated Slack channel & 99.9% SLA",
+      "Dedicated AWS account or environment",
+      "Private PostgreSQL analysis target",
+      "Custom deployment parameters",
+      "Account-scoped repository and policy data",
+      "Custom RDS pricing inputs for the cost engine",
+      "Optional CUR/Athena reconciliation",
     ],
-    cta: "Contact Architecture Team",
-    ctaLink: "https://github.com/zunxii/costgate",
+    cta: "View Architecture",
+    ctaLink: "/architecture",
     popular: false,
   },
 ];
@@ -73,7 +71,7 @@ export function PricingSection() {
             Transparent Plans for Modern Engineering Teams
           </h2>
           <p className="mt-3 text-neutral-400 text-sm sm:text-base">
-            Start free with our open-source AWS template, or scale effortlessly with our fully managed cloud service.
+            Choose the deployment model that matches the current CostGate stack: self-hosted AWS, the authenticated application flow, or a dedicated AWS deployment.
           </p>
         </div>
 
@@ -121,8 +119,7 @@ export function PricingSection() {
 
               <a
                 href={tier.ctaLink}
-                target="_blank"
-                rel="noopener noreferrer"
+                {...(tier.ctaLink.startsWith("http") ? { target: "_blank", rel: "noopener noreferrer" } : {})}
                 className={buttonVariants({
                   className: `w-full font-semibold text-xs h-10 ${
                     tier.popular

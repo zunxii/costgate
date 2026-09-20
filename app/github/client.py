@@ -90,6 +90,20 @@ class GitHubClient:
             params={"per_page": 100},
         )
 
+    def list_pull_requests(
+        self,
+        owner: str,
+        repo: str,
+        *,
+        state: str = "open",
+        per_page: int = 50,
+    ) -> list[dict[str, Any]]:
+        return self._request(
+            "GET",
+            f"/repos/{owner}/{repo}/pulls",
+            params={"state": state, "per_page": min(per_page, 100)},
+        )
+
     def get_file_content(
         self,
         owner: str,

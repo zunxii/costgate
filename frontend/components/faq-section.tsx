@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 const FAQS = [
   {
     q: "How does CostGate analyze queries without risking production data?",
-    a: "CostGate connects to a dedicated shadow PostgreSQL replica or containerized staging database inside your private VPC. Furthermore, CostGate AST-validates every statement to ensure only SELECT and WITH statements are ever executed, wraps every query in `SET TRANSACTION READ ONLY`, and enforces a 10-second statement timeout with a 2-second lock timeout to eliminate any risk of table locking or data modification.",
+    a: "CostGate connects to a dedicated shadow PostgreSQL replica or containerized staging database inside your private VPC. The analysis path is designed around read-only PostgreSQL execution. Exact database safeguards are defined by the analyzer implementation and your configured shadow environment.",
   },
   {
     q: "How is the attributed monthly dollar cost calculated?",
@@ -20,7 +20,7 @@ const FAQS = [
   },
   {
     q: "Will CostGate slow down our CI/CD workflow or pull request checks?",
-    a: "Not at all. The GitHub webhook endpoint is completely decoupled via Amazon SQS and returns HTTP 202 in under 100ms. The background PR Event Processor and VPC Analysis Lambda run asynchronously, publishing or updating the PR comment in 2 to 3 seconds without blocking your GitHub Actions test runners.",
+    a: "Not at all. The GitHub webhook is decoupled from analysis using Amazon SQS and Lambda. Exact response and processing time depend on the deployed AWS environment and workload; analysis runs asynchronously rather than inside the webhook request.",
   },
   {
     q: "What permissions does the CostGate GitHub App require?",
@@ -28,11 +28,11 @@ const FAQS = [
   },
   {
     q: "Can CostGate be deployed entirely within our own AWS account?",
-    a: "Yes! CostGate includes a complete AWS Serverless Application Model (`template.yaml`) that you can deploy in minutes with `sam deploy`. It provisions the HTTP API, SQS queues, processor Lambdas, and VPC connectors directly in your own AWS account with zero external third-party dependencies.",
+    a: "Yes. CostGate includes an AWS Serverless Application Model (`template.yaml`) for deploying the API, queues, workers, persistence, and analysis components into your AWS account. The exact deployment topology depends on the parameters you provide.",
   },
   {
     q: "Which database engines are supported?",
-    a: "Currently, CostGate is purpose-built for PostgreSQL 14, 15, and 16 running on AWS RDS, AWS Aurora, or self-hosted EC2/Docker environments. MySQL 8 (EXPLAIN FORMAT=JSON) and Snowflake support are on the roadmap.",
+    a: "The current cost-analysis pipeline is PostgreSQL-oriented and expects a reachable PostgreSQL environment. Supporting another database engine requires an analyzer implementation for that engine.",
   },
 ];
 

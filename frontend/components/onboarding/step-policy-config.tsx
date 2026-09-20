@@ -40,7 +40,7 @@ export function StepPolicyConfig({ onComplete }: StepPolicyConfigProps) {
             Configure FinOps Thresholds
           </h2>
           <p className="text-xs text-slate-500 font-light">
-            Set automated PR warning and blocking thresholds based on projected AWS RDS bill spikes.
+            Set the thresholds CostGate will apply to the real PR analysis pipeline.
           </p>
         </div>
       </div>

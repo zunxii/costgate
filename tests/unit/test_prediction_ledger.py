@@ -29,6 +29,20 @@ class FakeTable:
 
         self.items[prediction_id] = Item
 
+    def update_item(self, *, Key, UpdateExpression, ConditionExpression, ExpressionAttributeNames, ExpressionAttributeValues, ReturnValues):
+        item = self.items.get(Key["prediction_id"])
+        if item is None:
+            raise ClientError({"Error": {"Code": "ResourceNotFoundException", "Message": "missing"}}, "UpdateItem")
+        if item.get("status") != ExpressionAttributeValues[":predicted"]:
+            raise ClientError({"Error": {"Code": "ConditionalCheckFailedException", "Message": "condition failed"}}, "UpdateItem")
+        item = dict(item)
+        item["status"] = ExpressionAttributeValues[":reconciled"]
+        item["actual_monthly_delta"] = ExpressionAttributeValues[":actual"]
+        item["actual_error_pct"] = ExpressionAttributeValues[":error"]
+        item["reconciled_at"] = ExpressionAttributeValues[":time"]
+        self.items[Key["prediction_id"]] = item
+        return {"Attributes": item}
+
     def get_item(self, *, Key):
         item = self.items.get(Key["prediction_id"])
 
@@ -124,3 +138,21 @@ def test_duplicate_prediction_is_not_overwritten():
 
     assert ledger.save(reconciled) is False
     assert ledger.get("pred-123") == original
+
+
+def test_mark_reconciled_updates_existing_prediction():
+    table = FakeTable()
+    ledger = PredictionLedger(table=table)
+    original = _prediction()
+    ledger.save(original)
+
+    updated = ledger.mark_reconciled(
+        prediction_id=original.prediction_id,
+        actual_monthly_delta=Decimal("81.00"),
+        actual_error_pct=Decimal("3.846153846"),
+        reconciled_at="2026-09-20T12:00:00Z",
+    )
+
+    assert updated.status == "reconciled"
+    assert updated.actual_monthly_delta == Decimal("81.00")
+    assert updated.reconciled_at == "2026-09-20T12:00:00Z"

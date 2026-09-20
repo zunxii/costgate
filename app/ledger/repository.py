@@ -49,6 +49,36 @@ class PredictionLedger:
 
         return True
 
+    def mark_reconciled(
+        self,
+        *,
+        prediction_id: str,
+        actual_monthly_delta: Decimal,
+        actual_error_pct: Decimal,
+        reconciled_at: str,
+    ) -> PredictionRecord:
+        response = self.table.update_item(
+            Key={"prediction_id": prediction_id},
+            UpdateExpression=(
+                "SET #s = :reconciled, "
+                "actual_monthly_delta = :actual, "
+                "actual_error_pct = :error, "
+                "reconciled_at = :time"
+            ),
+            ConditionExpression="#s = :predicted",
+            ExpressionAttributeNames={"#s": "status"},
+            ExpressionAttributeValues={
+                ":reconciled": "reconciled",
+                ":predicted": "predicted",
+                ":actual": Decimal(str(actual_monthly_delta)),
+                ":error": Decimal(str(actual_error_pct)),
+                ":time": reconciled_at,
+            },
+            ReturnValues="ALL_NEW",
+        )
+
+        return self._from_item(response["Attributes"])
+
     def get(self, prediction_id: str) -> PredictionRecord | None:
         response = self.table.get_item(
             Key={"prediction_id": prediction_id}
@@ -59,6 +89,9 @@ class PredictionLedger:
         if not item:
             return None
 
+        return self._from_item(item)
+    @staticmethod
+    def _from_item(item: dict[str, Any]) -> PredictionRecord:
         return PredictionRecord(
             prediction_id=item["prediction_id"],
             repository=item["repository"],
@@ -66,39 +99,18 @@ class PredictionLedger:
             commit_sha=item["commit_sha"],
             author=item["author"],
             created_at=item["created_at"],
-            predicted_monthly_delta=Decimal(
-                item["predicted_monthly_delta"]
-            ),
-            predicted_lower_bound=Decimal(
-                item["predicted_lower_bound"]
-            ),
-            predicted_upper_bound=Decimal(
-                item["predicted_upper_bound"]
-            ),
+            predicted_monthly_delta=Decimal(item["predicted_monthly_delta"]),
+            predicted_lower_bound=Decimal(item["predicted_lower_bound"]),
+            predicted_upper_bound=Decimal(item["predicted_upper_bound"]),
             confidence=item["confidence"],
             direction=item["direction"],
-            baseline_execution_ms=float(
-                item["baseline_execution_ms"]
-            ),
-            candidate_execution_ms=float(
-                item["candidate_execution_ms"]
-            ),
-            baseline_rows=int(
-                item["baseline_rows"]
-            ),
-            candidate_rows=int(
-                item["candidate_rows"]
-            ),
-            baseline_scan_type=item[
-                "baseline_scan_type"
-            ],
-            candidate_scan_type=item[
-                "candidate_scan_type"
-            ],
-            status=item.get(
-                "status",
-                "predicted",
-            ),
+            baseline_execution_ms=float(item["baseline_execution_ms"]),
+            candidate_execution_ms=float(item["candidate_execution_ms"]),
+            baseline_rows=int(item["baseline_rows"]),
+            candidate_rows=int(item["candidate_rows"]),
+            baseline_scan_type=item["baseline_scan_type"],
+            candidate_scan_type=item["candidate_scan_type"],
+            status=item.get("status", "predicted"),
             actual_monthly_delta=(
                 Decimal(item["actual_monthly_delta"])
                 if item.get("actual_monthly_delta") is not None

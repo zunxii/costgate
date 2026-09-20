@@ -11,6 +11,7 @@ class BillingSource(Protocol):
         self,
         *,
         resource_id: str,
+        **kwargs,
     ) -> Decimal:
         ...
 
@@ -30,6 +31,7 @@ class MockCURBillingSource:
         self,
         *,
         resource_id: str,
+        **kwargs,
     ) -> Decimal:
         with self.path.open() as file:
             data = json.load(file)

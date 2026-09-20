@@ -42,6 +42,27 @@ Parameters:
     Type: String
     Default: "1000000"
 
+  # Optional real CUR 2.0 / Athena configuration. These are not
+  # required for the mock-CUR hackathon demo.
+  CurDatabase:
+    Type: String
+    Default: ""
+    Description: Athena/Glue database containing the CUR 2.0 table
+
+  CurTable:
+    Type: String
+    Default: ""
+    Description: Athena CUR 2.0 table, optionally qualified as database.table
+
+  CurWorkGroup:
+    Type: String
+    Default: "primary"
+
+  CurQueryResultsS3Uri:
+    Type: String
+    Default: ""
+    Description: S3 location where Athena query results are written
+
   AnalysisSubnetIds:
     Type: List<AWS::EC2::Subnet::Id>
     Default: "subnet-099621f07d6a1a31a,subnet-00f174b5c564fe3df"
@@ -173,6 +194,11 @@ Resources:
           COSTGATE_WARN_USD: "5"
           COSTGATE_BLOCK_USD: "25"
           COSTGATE_MIN_CONFIDENCE: "medium"
+          CUR_DATABASE: !Ref CurDatabase
+          CUR_TABLE: !Ref CurTable
+          CUR_WORKGROUP: !Ref CurWorkGroup
+          CUR_QUERY_RESULTS_S3_URI: !Ref CurQueryResultsS3Uri
+          CUR_REGION: !Ref RdsRegion
 
       Policies:
         - Version: "2012-10-17"

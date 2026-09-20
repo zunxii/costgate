@@ -2,10 +2,6 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from decimal import Decimal
-def _decimal(value):
-    if value is None:
-        return None
-    return Decimal(str(value))
 
 @dataclass(frozen=True)
 class PredictionRecord:
@@ -57,7 +53,13 @@ class PredictionRecord:
     candidate_window_end: str | None = None
 
     def to_item(self) -> dict:
-        item = asdict(self)
+    # DynamoDB GSI key attributes must be absent when they are not set.
+    # Do not write Python None values as DynamoDB NULL values.
+        item = {
+            key: value
+            for key, value in asdict(self).items()
+            if value is not None
+        }
 
         numeric_fields = (
             "predicted_monthly_delta",
@@ -70,11 +72,7 @@ class PredictionRecord:
         )
 
         for key in numeric_fields:
-            value = item.get(key)
-
-            if value is None:
-                item.pop(key, None)
-            else:
-                item[key] = Decimal(str(value))
+            if key in item:
+                item[key] = Decimal(str(item[key]))
 
         return item

@@ -5,11 +5,13 @@ export const dynamic = "force-dynamic";
 const BACKEND_URL = process.env.COSTGATE_BACKEND_URL || "http://127.0.0.1:3000";
 
 /**
- * GET /api/installations
+ * GET /api/auth/github/user
  *
- * Returns GitHub App installations for the current authenticated user.
- * Proxies to the backend at GET /api/github/installations.
- * Returns a typed error when the backend is unreachable.
+ * After GitHub OAuth redirects back with ?auth=success, the frontend calls this
+ * endpoint to resolve the authenticated user's profile from the backend session.
+ *
+ * The backend at GET /api/auth/github/user is expected to read the active session
+ * (cookie or JWT) and return the user's GitHub profile.
  */
 export async function GET(req: Request) {
   const requestId =
@@ -19,11 +21,11 @@ export async function GET(req: Request) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 8000);
 
-    const res = await fetch(`${BACKEND_URL}/api/github/installations`, {
+    const res = await fetch(`${BACKEND_URL}/api/auth/github/user`, {
       cache: "no-store",
       headers: {
         "X-Request-ID": requestId,
-        // Forward the session/auth cookie so the backend can identify the user
+        // Forward the session cookie so the backend can identify the user
         ...(req.headers.get("cookie") ? { cookie: req.headers.get("cookie")! } : {}),
       },
       signal: controller.signal,
@@ -44,7 +46,7 @@ export async function GET(req: Request) {
         data: null,
         error: {
           code: `BACKEND_HTTP_${res.status}`,
-          message: `Backend installations API returned status ${res.status}`,
+          message: `GitHub user profile API returned status ${res.status}`,
         },
         request_id: requestId,
       },

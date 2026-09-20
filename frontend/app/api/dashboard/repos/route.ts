@@ -2,39 +2,53 @@ import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-const CONNECTED_REPOS = [
-  {
-    id: "repo-1",
-    name: "zunxii/costgate",
-    status: "active",
-    prs_analyzed: 142,
-    total_savings_usd: 4820.00,
-    webhook_health: "healthy",
-    db_engine: "PostgreSQL 16 (AWS RDS Aurora)",
-    installed_at: "2026-08-15T10:30:00Z",
-  },
-  {
-    id: "repo-2",
-    name: "acme-corp/payment-service",
-    status: "active",
-    prs_analyzed: 89,
-    total_savings_usd: 2450.50,
-    webhook_health: "healthy",
-    db_engine: "PostgreSQL 15 (RDS Multi-AZ)",
-    installed_at: "2026-09-01T14:20:00Z",
-  },
-  {
-    id: "repo-3",
-    name: "fintech/billing-engine",
-    status: "active",
-    prs_analyzed: 34,
-    total_savings_usd: 1280.00,
-    webhook_health: "healthy",
-    db_engine: "PostgreSQL 14 (RDS Single-AZ)",
-    installed_at: "2026-09-10T09:15:00Z",
-  },
-];
+const BACKEND_URL = process.env.COSTGATE_BACKEND_URL || "http://127.0.0.1:3000";
 
-export async function GET() {
-  return NextResponse.json(CONNECTED_REPOS);
+export async function GET(req: Request) {
+  const requestId = req.headers.get("X-Request-ID") || `req-${Math.random().toString(36).substring(2, 9)}`;
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+    const res = await fetch(`${BACKEND_URL}/api/dashboard/repos`, {
+      cache: "no-store",
+      headers: { "X-Request-ID": requestId },
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (res.ok) {
+      const body = await res.json();
+      return NextResponse.json({
+        data: body,
+        error: null,
+        request_id: requestId,
+      });
+    }
+
+    return NextResponse.json(
+      {
+        data: null,
+        error: {
+          code: `BACKEND_HTTP_${res.status}`,
+          message: `Backend API returned status ${res.status}`,
+        },
+        request_id: requestId,
+      },
+      { status: res.status }
+    );
+  } catch (error: any) {
+    return NextResponse.json(
+      {
+        data: null,
+        error: {
+          code: "BACKEND_UNAVAILABLE",
+          message: "CostGate backend server is unreachable. Ensure python/sam backend is running.",
+        },
+        request_id: requestId,
+      },
+      { status: 503 }
+    );
+  }
 }

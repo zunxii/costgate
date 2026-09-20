@@ -2,34 +2,53 @@ import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:3000";
+const BACKEND_URL = process.env.COSTGATE_BACKEND_URL || "http://127.0.0.1:3000";
 
-const DEFAULT_SUMMARY = {
-  prediction_count: 24,
-  reconciled_count: 18,
-  total_predicted_monthly: 1420.50,
-  total_verified_monthly: 1385.10,
-  mean_error_pct: 2.49,
-};
+export async function GET(req: Request) {
+  const requestId = req.headers.get("X-Request-ID") || `req-${Math.random().toString(36).substring(2, 9)}`;
 
-export async function GET() {
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 1500);
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
 
     const res = await fetch(`${BACKEND_URL}/api/dashboard/summary`, {
       cache: "no-store",
+      headers: { "X-Request-ID": requestId },
       signal: controller.signal,
     });
     clearTimeout(timeoutId);
 
     if (res.ok) {
-      const data = await res.json();
-      return NextResponse.json(data);
+      const body = await res.json();
+      return NextResponse.json({
+        data: body,
+        error: null,
+        request_id: requestId,
+      });
     }
-  } catch (error) {
-    // Failover silently to default summary payload
-  }
 
-  return NextResponse.json(DEFAULT_SUMMARY);
+    return NextResponse.json(
+      {
+        data: null,
+        error: {
+          code: `BACKEND_HTTP_${res.status}`,
+          message: `Backend API returned status ${res.status}`,
+        },
+        request_id: requestId,
+      },
+      { status: res.status }
+    );
+  } catch (error: any) {
+    return NextResponse.json(
+      {
+        data: null,
+        error: {
+          code: "BACKEND_UNAVAILABLE",
+          message: "CostGate backend server is unreachable. Ensure python/sam backend is running.",
+        },
+        request_id: requestId,
+      },
+      { status: 503 }
+    );
+  }
 }

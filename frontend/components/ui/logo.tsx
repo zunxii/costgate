@@ -14,27 +14,27 @@ interface LogoProps {
 
 export function Logo({ className, showText = true, size = "md", href = "/" }: LogoProps) {
   const dimensions = {
-    sm: { icon: 24, text: "text-base" },
-    md: { icon: 30, text: "text-lg" },
-    lg: { icon: 40, text: "text-2xl" },
+    sm: { icon: 20, text: "text-xs font-semibold" },
+    md: { icon: 24, text: "text-sm font-bold" },
+    lg: { icon: 32, text: "text-lg font-bold" },
   }[size];
 
   const content = (
-    <div className={cn("inline-flex items-center gap-2.5 group cursor-pointer select-none", className)}>
-      <div className="relative overflow-hidden rounded-lg transition-transform duration-200 group-hover:scale-105">
+    <div className={cn("inline-flex items-center gap-2 group cursor-pointer select-none", className)}>
+      <div className="relative overflow-hidden rounded border border-slate-200 bg-white p-0.5 shadow-xs">
         <Image
           src="/logo.png"
           alt="CostGate Logo"
-          width={dimensions.icon * 3}
-          height={dimensions.icon * 3}
+          width={dimensions.icon * 2}
+          height={dimensions.icon * 2}
           className="object-contain"
           style={{ width: dimensions.icon, height: dimensions.icon }}
           priority
         />
       </div>
       {showText && (
-        <span className={cn("font-sans font-bold tracking-tight text-slate-900 group-hover:text-orange-600 transition-colors", dimensions.text)}>
-          Cost<span className="text-orange-500">Gate</span>
+        <span className={cn("font-sans tracking-tight text-slate-900 group-hover:text-orange-600 transition-colors", dimensions.text)}>
+          Cost<span className="text-orange-600">Gate</span>
         </span>
       )}
     </div>

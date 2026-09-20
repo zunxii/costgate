@@ -7,7 +7,7 @@ import { Slider } from "@/components/ui/slider";
 import { formatCurrency } from "@/lib/formatters";
 
 interface StepPolicyConfigProps {
-  onComplete: (policy: { warnUsd: number; blockUsd: number; dbInstance: string }) => void;
+  onComplete: (policy: { warnUsd: number; blockUsd: number; dbInstance: string }) => Promise<void> | void;
 }
 
 export function StepPolicyConfig({ onComplete }: StepPolicyConfigProps) {
@@ -16,12 +16,13 @@ export function StepPolicyConfig({ onComplete }: StepPolicyConfigProps) {
   const [dbInstance, setDbInstance] = useState<string>("db.t4g.small");
   const [saving, setSaving] = useState<boolean>(false);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     setSaving(true);
-    setTimeout(() => {
-      onComplete({ warnUsd, blockUsd, dbInstance });
+    try {
+      await onComplete({ warnUsd, blockUsd, dbInstance });
+    } finally {
       setSaving(false);
-    }, 600);
+    }
   };
 
   return (

@@ -1,16 +1,8 @@
 import type { NextConfig } from "next";
 
-const backendUrl = process.env.NEXT_PUBLIC_API_URL || process.env.BACKEND_API_URL || "http://127.0.0.1:3000";
-
 const nextConfig: NextConfig = {
-  async rewrites() {
-    return [
-      {
-        source: "/api/dashboard/:path*",
-        destination: `${backendUrl}/api/dashboard/:path*`,
-      },
-    ];
-  },
+  // Route handlers at app/api/**/route.ts proxy to the backend themselves (BFF pattern).
+  // Do NOT add rewrites for /api/* paths — they would bypass the route handlers.
 };
 
 export default nextConfig;

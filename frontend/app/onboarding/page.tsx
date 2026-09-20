@@ -1,24 +1,24 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, Suspense } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, Shield, ArrowLeft } from "lucide-react";
+import { CheckCircle2, Shield, ArrowLeft, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { StepAuth } from "@/components/onboarding/step-auth";
 import { StepInstallRepo } from "@/components/onboarding/step-install-repo";
 import { StepPolicyConfig } from "@/components/onboarding/step-policy-config";
 
-export default function OnboardingPage() {
+const steps = [
+  { number: 1, title: "Authorize GitHub" },
+  { number: 2, title: "Select Repositories" },
+  { number: 3, title: "Configure FinOps Limits" },
+];
+
+function OnboardingContent() {
   const router = useRouter();
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [user, setUser] = useState<{ name: string; username: string; avatar: string } | null>(null);
   const [selectedRepos, setSelectedRepos] = useState<any[]>([]);
-
-  const steps = [
-    { number: 1, title: "Authorize GitHub" },
-    { number: 2, title: "Select Repositories" },
-    { number: 3, title: "Configure FinOps Limits" },
-  ];
 
   const handleAuthComplete = (userData: { name: string; username: string; avatar: string }) => {
     setUser(userData);
@@ -32,13 +32,18 @@ export default function OnboardingPage() {
 
   const handlePolicyComplete = async (policy: any) => {
     try {
-      await fetch("/api/dashboard/policy", {
+      const res = await fetch("/api/dashboard/policy", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(policy),
       });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        console.warn("Failed to save policy — backend error", body?.error || res.status);
+      }
     } catch (e) {
-      console.warn("Failed to save policy", e);
+      // Backend may be unreachable; log it and proceed to dashboard anyway
+      console.warn("Failed to save policy — backend unavailable", e);
     }
     router.push("/dashboard?onboarded=true");
   };
@@ -97,7 +102,7 @@ export default function OnboardingPage() {
           </div>
         </div>
 
-        {/* Step Views */}
+        {/* Step Views — StepAuth uses useSearchParams, requires Suspense */}
         {currentStep === 1 && (
           <StepAuth onComplete={handleAuthComplete} authenticatedUser={user} />
         )}
@@ -109,5 +114,19 @@ export default function OnboardingPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function OnboardingPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+          <Loader2 className="size-6 animate-spin text-orange-500" />
+        </div>
+      }
+    >
+      <OnboardingContent />
+    </Suspense>
   );
 }

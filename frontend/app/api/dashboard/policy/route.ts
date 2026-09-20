@@ -2,25 +2,107 @@ import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-let CURRENT_POLICY = {
-  warn_usd: 5.0,
-  block_usd: 25.0,
-  min_confidence: "medium",
-  enable_check: true,
-  enable_comment: true,
-  notification_webhook: "https://discord.com/api/webhooks/1234/costgate-alerts",
-};
+const BACKEND_URL = process.env.COSTGATE_BACKEND_URL || "http://127.0.0.1:3000";
 
-export async function GET() {
-  return NextResponse.json(CURRENT_POLICY);
+export async function GET(req: Request) {
+  const requestId = req.headers.get("X-Request-ID") || `req-${Math.random().toString(36).substring(2, 9)}`;
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+    const res = await fetch(`${BACKEND_URL}/api/dashboard/policy`, {
+      cache: "no-store",
+      headers: { "X-Request-ID": requestId },
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (res.ok) {
+      const body = await res.json();
+      return NextResponse.json({
+        data: body,
+        error: null,
+        request_id: requestId,
+      });
+    }
+
+    return NextResponse.json(
+      {
+        data: null,
+        error: {
+          code: `BACKEND_HTTP_${res.status}`,
+          message: `Backend API returned status ${res.status}`,
+        },
+        request_id: requestId,
+      },
+      { status: res.status }
+    );
+  } catch (error: any) {
+    return NextResponse.json(
+      {
+        data: null,
+        error: {
+          code: "BACKEND_UNAVAILABLE",
+          message: "CostGate backend server is unreachable. Ensure python/sam backend is running.",
+        },
+        request_id: requestId,
+      },
+      { status: 503 }
+    );
+  }
 }
 
 export async function POST(req: Request) {
+  const requestId = req.headers.get("X-Request-ID") || `req-${Math.random().toString(36).substring(2, 9)}`;
+
   try {
-    const body = await req.json();
-    CURRENT_POLICY = { ...CURRENT_POLICY, ...body };
-    return NextResponse.json({ success: true, policy: CURRENT_POLICY });
-  } catch (err) {
-    return NextResponse.json({ success: false, error: "Invalid payload" }, { status: 400 });
+    const payload = await req.json();
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+    const res = await fetch(`${BACKEND_URL}/api/dashboard/policy`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Request-ID": requestId,
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (res.ok) {
+      const body = await res.json();
+      return NextResponse.json({
+        data: body,
+        error: null,
+        request_id: requestId,
+      });
+    }
+
+    return NextResponse.json(
+      {
+        data: null,
+        error: {
+          code: `BACKEND_HTTP_${res.status}`,
+          message: `Backend API returned status ${res.status}`,
+        },
+        request_id: requestId,
+      },
+      { status: res.status }
+    );
+  } catch (error: any) {
+    return NextResponse.json(
+      {
+        data: null,
+        error: {
+          code: "BACKEND_UNAVAILABLE",
+          message: "CostGate backend server is unreachable. Ensure python/sam backend is running.",
+        },
+        request_id: requestId,
+      },
+      { status: 503 }
+    );
   }
 }

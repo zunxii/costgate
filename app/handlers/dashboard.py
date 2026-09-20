@@ -9,12 +9,12 @@ from typing import Any
 import boto3
 
 
-REGION = os.getenv("AWS_REGION", "eu-north-1")
-TABLE_NAME = os.environ["PREDICTION_TABLE_NAME"]
+REGIONAL_DEFAULT = os.getenv("AWS_REGION", "eu-north-1")
+TABLE_NAME = os.getenv("PREDICTION_TABLE_NAME", "costgate-predictions")
 
 table = boto3.resource(
     "dynamodb",
-    region_name=REGION,
+    region_name=REGIONAL_DEFAULT,
 ).Table(TABLE_NAME)
 
 

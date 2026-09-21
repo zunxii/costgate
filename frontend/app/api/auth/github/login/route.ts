@@ -44,6 +44,7 @@ export async function GET() {
   );
 
   const redirectUri =
+    process.env.GITHUB_REDIRECT_URI ||
     `${siteUrl.replace(/\/$/, "")}/api/auth/github/callback`;
 
   const githubUrl = new URL(

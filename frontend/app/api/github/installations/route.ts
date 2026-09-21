@@ -3,7 +3,7 @@ import {
 } from "next/server";
 
 import {
-    getSession,
+    getSessionToken,
 } from "@/lib/auth/session";
 
 import {
@@ -12,7 +12,7 @@ import {
 
 export async function GET() {
     const token =
-        await getSession();
+        await getSessionToken();
 
     if (!token) {
         return NextResponse.json(

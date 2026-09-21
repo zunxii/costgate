@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getSessionToken } from "@/lib/auth/session";
 
 const BACKEND_URL = process.env.COSTGATE_BACKEND_URL;
 
@@ -13,6 +14,19 @@ export async function proxyBackend(request: Request, path: string, init: Request
   const headers = new Headers(init.headers);
   const cookie = request.headers.get("cookie");
   if (cookie) headers.set("cookie", cookie);
+
+  const auth = request.headers.get("authorization");
+  if (auth && !headers.has("authorization")) {
+    headers.set("authorization", auth);
+  }
+
+  if (!headers.has("authorization")) {
+    const token = await getSessionToken();
+    if (token) {
+      headers.set("authorization", `Bearer ${token}`);
+    }
+  }
+
   headers.set("x-request-id", requestId(request));
   if (init.body && !headers.has("content-type")) headers.set("content-type", "application/json");
 

@@ -4,7 +4,7 @@ import {
 } from "next/server";
 
 import {
-    getSession,
+    getSessionToken,
 } from "@/lib/auth/session";
 
 import {
@@ -15,7 +15,7 @@ export async function POST(
     request: NextRequest
 ) {
     const token =
-        await getSession();
+        await getSessionToken();
 
     if (!token) {
         return NextResponse.json(

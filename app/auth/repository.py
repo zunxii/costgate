@@ -17,6 +17,21 @@ POLICIES_TABLE = os.getenv("POLICY_TABLE_NAME", "costgate-policies")
 REGION = os.getenv("AWS_REGION", "eu-north-1")
 
 
+from decimal import Decimal
+
+
+def _floats_to_decimals(obj: Any) -> Any:
+    if isinstance(obj, float):
+        return Decimal(str(obj))
+    if isinstance(obj, dict):
+        return {k: _floats_to_decimals(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_floats_to_decimals(v) for v in obj]
+    if isinstance(obj, tuple):
+        return tuple(_floats_to_decimals(v) for v in obj)
+    return obj
+
+
 def _ddb():
     return boto3.resource("dynamodb", region_name=REGION)
 
@@ -110,7 +125,8 @@ class UserRepository:
             KeyConditionExpression=Key("email").eq(email),
             Limit=1,
         )
-        return response.get("Items", [None])[0]
+        items = response.get("Items") or []
+        return items[0] if items else None
 
     def find_by_github_id(self, github_id: str) -> dict[str, Any] | None:
         response = self.table.query(
@@ -143,19 +159,20 @@ class ConnectionRepository:
     def __init__(self, table: Any | None = None) -> None:
         self.table = table or _ddb().Table(CONNECTIONS_TABLE)
 
-    def list_for_user(self, user_id: str) -> list[dict[str, Any]]:
-        response = self.table.query(
-            IndexName="UserRepoIndex",
-            KeyConditionExpression=Key("user_id").eq(user_id),
-        )
-        items = response.get("Items") or []
-        return items[0] if items else None
+    
 
     def find_for_repo(self, user_id: str, repository: str) -> dict[str, Any] | None:
         for item in self.list_for_user(user_id):
             if item.get("repository") == repository:
                 return item
         return None
+
+    def list_for_user(self, user_id: str) -> list[dict[str, Any]]:
+        response = self.table.query(
+            IndexName="UserRepoIndex",
+            KeyConditionExpression=Key("user_id").eq(user_id),
+        )
+        return response.get("Items", [])
 
     def find_by_installation_repo(self, installation_id: str, repository: str) -> dict[str, Any] | None:
         response = self.table.query(
@@ -165,7 +182,6 @@ class ConnectionRepository:
         )
         items = response.get("Items") or []
         return items[0] if items else None
-
     def replace_for_user(self, user_id: str, repositories: list[dict[str, Any]]) -> list[dict[str, Any]]:
         existing = {item.get("repository"): item for item in self.list_for_user(user_id)}
         desired = {str(item["repository"]): item for item in repositories}
@@ -254,7 +270,7 @@ class PRStudioJobRepository:
         assignments = []
         for index, (key, value) in enumerate(values.items()):
             names[f"#k{index}"] = key
-            value_map[f":v{index}"] = value
+            value_map[f":v{index}"] = _floats_to_decimals(value)
             assignments.append(f"#k{index} = :v{index}")
         response = self.table.update_item(
             Key={"job_id": job_id},

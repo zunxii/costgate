@@ -54,6 +54,11 @@ def get_user_id_from_event(event: dict[str, Any]) -> str | None:
     token = authorization.removeprefix("Bearer ").strip() if authorization else ""
     if not token:
         token = parse_cookie_header(headers.get("cookie")) or ""
+    if not token and event.get("cookies"):
+        for cookie_str in event.get("cookies", []):
+            token = parse_cookie_header(cookie_str)
+            if token:
+                break
     if not token:
         return None
     claims = verify_session_token(token)

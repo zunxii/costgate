@@ -94,6 +94,7 @@ export async function GET(
   }
 
   const redirectUri =
+    process.env.GITHUB_REDIRECT_URI ||
     `${siteUrl.replace(/\/$/, "")}/api/auth/github/callback`;
 
   try {
@@ -137,6 +138,9 @@ export async function GET(
       );
     }
 
+    const existingSession =
+      request.cookies.get(SESSION_COOKIE)?.value;
+
     const backendResponse =
       await backendFetch(
         "/api/auth/github/callback",
@@ -147,6 +151,9 @@ export async function GET(
               "application/json",
             "Content-Type":
               "application/json",
+            ...(existingSession
+              ? { Authorization: `Bearer ${existingSession}` }
+              : {}),
           },
           body: JSON.stringify({
             access_token:
@@ -154,6 +161,7 @@ export async function GET(
           }),
         },
       );
+
 
     const payload =
       await backendResponse.json();

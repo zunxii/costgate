@@ -4,7 +4,7 @@ import {
 } from "next/server";
 
 import {
-    getSession,
+    getSessionToken,
 } from "@/lib/auth/session";
 
 import {
@@ -36,7 +36,7 @@ export async function GET(
         )?.value;
 
     const token =
-        await getSession();
+        await getSessionToken();
 
     if (
         !token ||

@@ -78,17 +78,27 @@ export async function middleware(
   const pathname =
     request.nextUrl.pathname;
 
+  const token =
+    request.cookies.get(
+      SESSION_COOKIE
+    )?.value;
+
+  if (pathname === "/signin" || pathname === "/signup") {
+    if (token) {
+      const session = await verifySessionToken(token);
+      if (session) {
+        return NextResponse.redirect(new URL("/dashboard", request.url));
+      }
+    }
+    return NextResponse.next();
+  }
+
   if (
     isPublicPath(pathname) ||
     !isProtectedPath(pathname)
   ) {
     return NextResponse.next();
   }
-
-  const token =
-    request.cookies.get(
-      SESSION_COOKIE
-    )?.value;
 
   if (!token) {
     if (

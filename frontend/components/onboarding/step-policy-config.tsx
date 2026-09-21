@@ -58,7 +58,10 @@ export function StepPolicyConfig({ onComplete }: StepPolicyConfigProps) {
           </div>
           <Slider
             value={[warnUsd]}
-            onValueChange={(val: any) => setWarnUsd(val[0])}
+            onValueChange={(val: any) => {
+              const num = Array.isArray(val) ? val[0] : typeof val === "number" ? val : Number(val);
+              if (typeof num === "number" && !isNaN(num)) setWarnUsd(num);
+            }}
             min={1}
             max={50}
             step={1}
@@ -81,7 +84,10 @@ export function StepPolicyConfig({ onComplete }: StepPolicyConfigProps) {
           </div>
           <Slider
             value={[blockUsd]}
-            onValueChange={(val: any) => setBlockUsd(val[0])}
+            onValueChange={(val: any) => {
+              const num = Array.isArray(val) ? val[0] : typeof val === "number" ? val : Number(val);
+              if (typeof num === "number" && !isNaN(num)) setBlockUsd(num);
+            }}
             min={10}
             max={200}
             step={5}

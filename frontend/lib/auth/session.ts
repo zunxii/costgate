@@ -49,24 +49,17 @@ export async function verifySessionToken(
 ): Promise<Session | null> {
     try {
         const { payload } = await jwtVerify(token, secret, {
-            issuer: ISSUER,
-            audience: AUDIENCE,
+            algorithms: ["HS256"],
         });
 
-        if (
-            typeof payload.sub !== "string" ||
-            typeof payload.email !== "string"
-        ) {
+        if (typeof payload.sub !== "string" || !payload.sub) {
             return null;
         }
 
         return {
             userId: payload.sub,
-            email: payload.email,
-            name:
-                typeof payload.name === "string"
-                    ? payload.name
-                    : "",
+            email: typeof payload.email === "string" ? payload.email : "",
+            name: typeof payload.name === "string" ? payload.name : "",
         };
     } catch {
         return null;

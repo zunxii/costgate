@@ -29,12 +29,14 @@ def enqueue_webhook_event(
 
     pull_request = webhook.payload.get("pull_request", {})
 
+    installation = webhook.payload.get("installation", {}) or {}
     message = {
         "delivery_id": webhook.delivery_id,
         "event": webhook.event_type,
         "action": webhook.action,
         "repository": repository_name,
         "pull_number": pull_number,
+        "installation_id": str(installation.get("id")) if installation.get("id") else None,
     }
 
     if webhook.action == "closed":

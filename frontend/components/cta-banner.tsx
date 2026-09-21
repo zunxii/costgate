@@ -19,18 +19,17 @@ export function CtaBanner() {
           Stop bill shocks before merge.
         </h2>
         <p className="mt-4 text-lg text-slate-500 max-w-xl mx-auto">
-          Catch expensive Seq Scans and memory blowouts in CI. 100% free and open source.
+          Catch expensive SQL execution regressions before merge with the open-source CostGate stack and authenticated application flow.
         </p>
 
         <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
           <motion.a
             whileHover={{ y: -2 }}
             whileTap={{ scale: 0.98 }}
-            href="https://github.com/apps"
-            target="_blank"
+            href="/signup"
             className="flex items-center justify-center w-full sm:w-auto bg-slate-900 text-white font-medium text-[15px] h-12 px-8 rounded-lg shadow-sm hover:shadow-md hover:bg-slate-800 transition-all"
           >
-            <span>Install Free Trial</span>
+            <span>Start Free Trial</span>
             <ArrowRight className="size-4 ml-2" />
           </motion.a>
           

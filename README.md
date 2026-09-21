@@ -1,402 +1,91 @@
 # CostGate
 
-### Git blame for your cloud bill.
+CostGate connects GitHub pull requests to a real SQL cost-analysis pipeline: GitHub webhook -> Amazon SQS -> processor Lambda -> VPC PostgreSQL analysis -> deterministic cost engine -> GitHub Check/PR comment -> DynamoDB prediction ledger.
 
-CostGate is a pull-request cost intelligence system for cloud-backed applications.
+## Application architecture
 
-It analyzes the database behavior of a code change **before merge**, estimates the financial impact of the regression, explains the underlying query-plan change, applies a configurable policy, and records the prediction so it can be verified against billing after the change reaches production.
+The Next.js frontend is a same-origin BFF. Browser requests never call the backend API directly. Protected pages require a signed `costgate_session` cookie, and Next.js proxies authenticated requests to the deployed API. This avoids CORS/session split-brain and keeps the GitHub OAuth secret server-side.
 
-The core idea is simple:
+The authenticated data paths are:
 
-```text
-Code change
-    ↓
-Execution-plan change
-    ↓
-Infrastructure impact
-    ↓
-$ / month
-    ↓
-Policy decision
-    ↓
-Post-merge verification
-    ↓
-Prediction accuracy
-```
+- **Dashboard**: one `/api/dashboard` request per load, backed by user-scoped DynamoDB data.
+- **PR Studio**: lists connected GitHub repositories and open PRs through the GitHub App; PR analysis is submitted to the processor Lambda and persisted as an asynchronous job.
+- **Cost Simulator**: sends the user-entered workload/execution assumptions to the backend cost engine and renders its response.
+- **Onboarding**: CostGate account -> GitHub OAuth -> GitHub App installation -> repository selection -> persisted cost policy.
 
----
+There are no client-side fallback dashboard records or fabricated PR results.
 
-## Why CostGate?
+## Deployment configuration
 
-A normal code review can tell you:
+### Next.js
 
-> "This query is slower."
-
-CostGate tries to answer:
-
-> "This query became 500× slower, switched from an index-backed scan to a sequential scan, and is projected to add approximately $X/month at the configured workload."
-
-That turns infrastructure cost into something developers can reason about **at PR time**, instead of discovering it after the cloud bill arrives.
-
----
-
-## How it works
-
-```text
-                         GitHub Pull Request
-                                  │
-                                  ▼
-                        GitHub App Webhook
-                                  │
-                                  ▼
-                                SQS
-                                  │
-                                  ▼
-                       CostGate Processor
-                          │             │
-                          │             └── GitHub API
-                          │
-                          ▼
-                    Query Extraction
-                          │
-                          ▼
-                 VPC Analysis Lambda
-                          │
-                          ▼
-                PostgreSQL Shadow DB
-                          │
-                 ┌────────┴────────┐
-                 │                 │
-              Baseline          Candidate
-                 │                 │
-                 └────────┬────────┘
-                          ▼
-                  Plan Comparison
-                          │
-                          ▼
-                  Deterministic Cost
-                       Engine
-                          │
-             ┌────────────┼─────────────┐
-             │            │             │
-             ▼            ▼             ▼
-          Comment       GitHub       Prediction
-                         Check          Ledger
-                                         │
-                                         ▼
-                                   Post-merge state
-                                         │
-                                         ▼
-                                    CUR / Athena
-                                         │
-                                         ▼
-                                  Actual cost/error
-```
-
----
-
-## What CostGate detects
-
-CostGate currently focuses on SQL/query regressions that can be observed through PostgreSQL execution plans.
-
-Examples include:
-
-- index-backed lookup → sequential scan
-- index usage disappearing
-- execution time increasing sharply
-- buffer usage increasing
-- changed scan strategies
-- workload-sensitive monthly infrastructure impact
-
-For Python application code, CostGate can extract literal `SELECT`/`WITH` SQL from changed Python files so the workflow does not require developers to maintain a separate SQL benchmark file.
-
----
-
-## Example
-
-A one-line application change:
-
-```sql
--- Before
-WHERE customer_id = '12345';
-
--- After
-WHERE LOWER(customer_id::text) = '12345';
-```
-
-can produce evidence such as:
-
-```text
-Baseline
-  Bitmap Heap Scan
-  Index: yes
-  Execution: 0.127 ms
-
-Candidate
-  Seq Scan
-  Index: no
-  Execution: 66.737 ms
-```
-
-CostGate can then report:
-
-```text
-Execution impact:  +66.610 ms
-Cost impact:       approximately +$0.74/month
-Range:             approximately $0.59–$0.89/month
-Policy:            PASS / WARN / BLOCK
-```
-
-The exact amount depends on the configured workload, database pricing assumptions, and other cost-model inputs.
-
----
-
-## GitHub experience
-
-CostGate operates as a GitHub App.
-
-The intended developer workflow is:
-
-```text
-Open / update PR
-      ↓
-CostGate analyzes changed query behavior
-      ↓
-PR comment with evidence
-      ↓
-GitHub Check with policy result
-```
-
-The GitHub Check can communicate a policy result such as:
-
-```text
-CostGate: PASS
-CostGate: WARNING
-CostGate: BLOCK
-```
-
-The prediction is also recorded so the change can be followed after merge.
-
----
-
-## Closed-loop verification
-
-Prediction is only the first half of CostGate.
-
-After a PR is merged, its prediction can move into a verification lifecycle:
-
-```text
-predicted
-    ↓
-verification_pending
-    ↓
-billing data available
-    ↓
-reconciled
-```
-
-The ledger records the predicted value, actual value when available, and prediction error.
-
-The AWS CUR 2.0 integration is designed for resource-level billing verification through Athena. A newly created CUR export may require time before the first billing dataset is delivered; until that data is available, CostGate keeps the prediction in a pending verification state rather than inventing an actual value.
-
----
-
-## Console
-
-The web console is designed around the same underlying CostGate data.
-
-The current product surfaces include:
-
-- repository overview
-- PR prediction history
-- predicted vs. verified impact
-- author-level cost attribution
-- policy configuration
-- PR analysis details
-- execution-plan evidence
-- verification status
-
-The live telemetry view is intended to expose prediction counts, predicted impact, verified impact, forecast error, recent PR predictions, and author-level cost statistics. fileciteturn13file3L19-L34
-
----
-
-## Architecture
-
-### AWS
-
-```text
-GitHub
-  ↓
-API Gateway
-  ↓
-Webhook Lambda
-  ↓
-SQS
-  ↓
-Processor Lambda
-  ├── GitHub
-  ├── policy
-  └── DynamoDB ledger
-        │
-        ▼
-  Analysis Lambda (VPC)
-        │
-        ▼
-  PostgreSQL / RDS shadow database
-```
-
-For post-merge billing verification:
-
-```text
-Prediction Ledger
-      ↓
-Reconciliation Lambda
-      ↓
-Athena
-      ↓
-AWS CUR 2.0
-      ↓
-Verified billing impact
-```
-
----
-
-## Core design principles
-
-### Deterministic numbers
-
-The cost calculation is performed by a deterministic cost engine. LLMs are not responsible for deciding the financial number.
-
-### Evidence before explanation
-
-The product prefers observable execution-plan evidence:
-
-```text
-scan type
-index usage
-rows
-execution time
-buffer activity
-```
-
-over unexplained scores.
-
-### Explicit uncertainty
-
-Cost results are estimates of attributed infrastructure impact, not guarantees of an AWS invoice amount.
-
-### No production mutation during analysis
-
-Query analysis is performed against a controlled/shadow database workflow with read-only execution and statement timeouts.
-
-### Post-merge verification
-
-A prediction should eventually be compared with observed billing rather than being treated as automatically correct.
-
----
-
-## Project structure
-
-```text
-costgate/
-├── app/
-│   ├── analyzer/
-│   ├── billing/
-│   ├── cost_engine/
-│   ├── github/
-│   ├── handlers/
-│   ├── ledger/
-│   ├── learning/
-│   ├── pipeline/
-│   ├── policy/
-│   └── query_extractor/
-│
-├── frontend/
-│   ├── app/
-│   ├── components/
-│   └── lib/
-│
-├── dashboard/
-├── data/
-├── docs/
-├── scripts/
-├── tests/
-└── template.yaml
-```
-
-The backend contains the analysis, cost, policy, ledger, billing, and GitHub integration layers. The frontend is the presentation layer over those services.
-
----
-
-## Running locally
-
-### Backend
-
-Use the project's Python virtual environment:
+Set these environment variables in the Next.js deployment (Vercel, ECS, EC2, etc.):
 
 ```bash
-source .venv/bin/activate
-pytest -q tests/unit
+NEXT_PUBLIC_SITE_URL=https://your-costgate-domain.example
+COSTGATE_BACKEND_URL=https://your-api-id.execute-api.eu-north-1.amazonaws.com
+COSTGATE_BACKEND_TIMEOUT_MS=15000
+AUTH_JWT_SECRET=<same-value-used-by-sam-authjwtsecret>
+GITHUB_CLIENT_ID=<github-oauth-app-client-id>
+GITHUB_CLIENT_SECRET=<github-oauth-app-client-secret>
+GITHUB_APP_SLUG=<github-app-slug>
 ```
 
-For SAM:
+Use the same `AUTH_JWT_SECRET` value in both the frontend and the SAM stack. Do not set `COSTGATE_BACKEND_URL` to the Next.js origin.
 
-```bash
-sam build --use-container
-sam deploy
+### GitHub OAuth App
+
+Configure the OAuth App callback URL to exactly:
+
+```text
+https://your-costgate-domain.example/api/auth/github/callback
 ```
 
-### Frontend
+The callback exchanges the authorization code server-side, verifies the returned GitHub identity, and then establishes the CostGate session.
+
+### GitHub App
+
+Set the GitHub App's **Setup URL** to exactly:
+
+```text
+https://your-costgate-domain.example/api/auth/github/setup
+```
+
+The onboarding install flow sends a signed state value to GitHub. CostGate verifies that state when GitHub returns from the App installation and then reloads the authenticated onboarding page.
+
+### SAM backend
+
+Deploy `template.yaml` with at least:
+
+- `WebhookSecret`
+- `AuthJwtSecret` (32+ characters, same value as the frontend)
+- `GitHubAppId`
+- `GitHubAppSlug`
+- RDS/VPC/CUR parameters required by the analysis worker
+
+The stack creates persistent DynamoDB tables for users, connected repositories, cost policy, PR Studio jobs, and prediction records.
+
+Example: `sam build && sam deploy --guided`
+
+The deployed API is exposed under `/api/{proxy+}` by `DashboardFunction`.
+
+## Local frontend
 
 ```bash
 cd frontend
+cp .env.example .env.local
+# Fill in COSTGATE_BACKEND_URL, AUTH_JWT_SECRET and GitHub credentials.
 npm install
 npm run build
+npm start
 ```
 
-Run the development server with the environment required by the current deployment/API configuration.
+For a local backend/API Gateway emulator, set `COSTGATE_BACKEND_URL` to that backend URL—not port 3000 unless the backend really runs there.
 
----
+## Important production behaviour
 
-## Production configuration
-
-Important configuration categories include:
-
-```text
-GitHub App credentials
-GitHub installation/workspace configuration
-PostgreSQL / RDS connection
-DynamoDB prediction ledger
-Cost-model assumptions
-Policy thresholds
-CUR / Athena configuration
-```
-
-Secrets should be supplied through the configured secret/environment mechanism rather than committed to the repository.
-
----
-
-## Product direction
-
-The long-term model is:
-
-```text
-PREDICT
-Measure the cost of the code change.
-
-GUARD
-Enforce a configurable cost policy.
-
-VERIFY
-Compare the prediction with actual spend.
-
-LEARN
-Use verified prediction error to improve future estimates.
-
-ATTRIBUTE
-Trace cloud-cost changes back to PRs, repositories, and authors.
-```
-
-That is the foundation for the broader idea:
-
-> **Git blame for your cloud bill.**
+- Session cookies are `HttpOnly` and `SameSite=Lax`; production cookies are `Secure`.
+- Browser API requests default to **zero automatic retries**. A transient error does not fan out into repeated dashboard traffic.
+- Dashboard initial load is consolidated into one backend request instead of separate summary/authors/predictions/repos calls.
+- Cost Simulator and PR Studio are protected both by the Next.js route group and by backend session validation.
+- GitHub repository access is validated against the authenticated GitHub App installation rather than trusting arbitrary repository or installation IDs from the browser.

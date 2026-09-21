@@ -36,11 +36,6 @@ class GitHubAppAuthenticator:
         if not self.app_id:
             raise GitHubIntegrationError("GITHUB_APP_ID is not configured.")
 
-        if not self.installation_id:
-            raise GitHubIntegrationError(
-                "GITHUB_INSTALLATION_ID is not configured."
-            )
-
         if not self.private_key and not self.private_key_path:
             raise GitHubIntegrationError(
                 "Either GITHUB_PRIVATE_KEY or "
@@ -97,6 +92,11 @@ class GitHubAppAuthenticator:
 
     def get_installation_token(self) -> dict[str, Any]:
         """Exchange the App JWT for an installation access token."""
+
+        if not self.installation_id:
+            raise GitHubIntegrationError(
+                "GITHUB_INSTALLATION_ID is required for installation authentication."
+            )
 
         token = self.generate_app_jwt()
 

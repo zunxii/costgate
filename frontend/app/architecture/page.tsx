@@ -36,13 +36,13 @@ const PIPELINE_STEPS: PipelineStep[] = [
     number: "01",
     name: "GitHub Webhook Ingestion",
     role: "HMAC Verification & Queue Enqueue",
-    latency: "< 18 ms",
+    latency: "Implemented",
     security: "HMAC SHA-256 Signature Verification",
     details: [
       "Subscribes to pull_request.opened and pull_request.synchronize events.",
       "Verifies X-Hub-Signature-256 header with secret rotation.",
       "Extracts PR diff hunks and changed SQL or ORM migration files.",
-      "Enqueues payload onto AWS SQS FIFO with deduplication ID.",
+      "Enqueues the webhook payload onto the configured Amazon SQS queue; the deployed template currently uses a standard queue.",
     ],
     codeSample: `// Webhook Payload Envelope
 {
@@ -58,25 +58,22 @@ const PIPELINE_STEPS: PipelineStep[] = [
   {
     id: "sqs-buffer",
     number: "02",
-    name: "SQS FIFO De-Duplication Buffer",
+    name: "Amazon SQS Queue",
     role: "Backpressure & Race Condition Elimination",
-    latency: "< 5 ms",
+    latency: "Configured",
     security: "KMS Envelope Encryption (aws/sqs)",
     details: [
-      "Uses MessageGroupId based on repository_id to serialize runs per repo.",
-      "Deduplicates rapid subsequent pushes using git commit SHA hash.",
-      "Provides dead-letter queuing (DLQ) with automatic retry up to 3 times.",
-      "Enforces concurrency limits to protect shadow database from query storms.",
+      "Provides asynchronous buffering between the public GitHub webhook and the processor Lambda.",
+      "Webhook messages carry delivery and installation context so the processor can use the correct GitHub App installation.",
+      "Queue behaviour is defined by the deployed SAM queue configuration; verify retry/DLQ settings in your environment before relying on them.",
+      "Provides asynchronous buffering so webhook ingestion is decoupled from database analysis work.",
     ],
-    codeSample: `// SQS FIFO Message
+    codeSample: `// SQS message envelope
 {
-  "MessageGroupId": "repo-8912301",
-  "MessageDeduplicationId": "sha-e9b2c3f",
-  "MessageBody": {
-    "installation_id": 49102,
-    "repo": "acme/backend",
-    "pull_number": 42
-  }
+  "repository": "owner/repository",
+  "pull_number": 123,
+  "installation_id": "<github-installation-id>",
+  "delivery_id": "<github-delivery-id>"
 }`,
   },
   {
@@ -84,22 +81,19 @@ const PIPELINE_STEPS: PipelineStep[] = [
     number: "03",
     name: "AST Query Extractor",
     role: "Diff Parsing & SQL AST Normalization",
-    latency: "< 45 ms",
-    security: "Zero Storage of Source Code",
+    latency: "Implemented",
+    security: "Diff-scoped processing",
     details: [
       "Fetches git patch diff via authenticated GitHub App Installation Token.",
       "Identifies altered SQL queries, ORM calls, and migration scripts.",
       "Normalizes parameterized values ($1, :id, ?) into query fingerprint.",
-      "Guarantees only SELECT and WITH statements proceed to sandbox replay.",
+      "The current extractor rejects unsupported SQL changes before analysis; the deployed analyzer is intended for read-oriented query evaluation.",
     ],
-    codeSample: `// Extracted Query AST Signature
+    codeSample: `// Analysis request sent to the VPC worker
 {
-  "statement_type": "SELECT",
-  "tables": ["orders", "order_items"],
-  "predicates": [
-    { "column": "customer_id", "operator": "=", "wrapped_in_function": "LOWER" }
-  ],
-  "is_read_only": true
+  "baseline_sql": "<base query>",
+  "candidate_sql": "<changed query>",
+  "file_path": "<changed file>"
 }`,
   },
   {
@@ -107,70 +101,65 @@ const PIPELINE_STEPS: PipelineStep[] = [
     number: "04",
     name: "Shadow DB VPC Worker",
     role: "Read-Only EXPLAIN Execution",
-    latency: "< 180 ms",
-    security: "100% Read-Only Transaction + 10s Timeout",
+    latency: "VPC Lambda",
+    security: "Read-only transaction + timeout",
     details: [
-      "Lambda worker operates strictly inside a private VPC with zero public egress.",
+      "The analysis Lambda is configured with your supplied VPC subnet and security-group identifiers.",
       "Connects to isolated shadow PostgreSQL replica with read-only credentials.",
       "Executes EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) within a read-only transaction.",
-      "Issues immediate ROLLBACK to guarantee zero persistent mutation.",
+      "Uses a read-only transaction and explicit ROLLBACK so the analysis path does not persist query-side mutations.",
     ],
     codeSample: `BEGIN;
 SET LOCAL default_transaction_read_only = on;
-SET LOCAL statement_timeout = '10000'; -- 10s kill switch
+SET LOCAL statement_timeout = '10s';
 
 EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
-SELECT id, status FROM orders WHERE LOWER(customer_id::text) = '12345';
+<baseline or candidate SQL>;
 
-ROLLBACK; -- Zero persistent state changes`,
+ROLLBACK;`,
   },
   {
     id: "cost-engine",
     number: "05",
     name: "FinOps Cost Modeling Engine",
     role: "Mathematical Cloud Spend Attribution",
-    latency: "< 12 ms",
+    latency: "Deterministic",
     security: "Stateless Algorithmic Scoring",
     details: [
       "Compares candidate execution time and shared buffer eviction against baseline.",
       "Multiplies compute delta by query frequency (QPS) over 30-day projection.",
       "Maps attributed CPU and I/O consumption to target AWS RDS hourly pricing.",
-      "Flags regressions exceeding threshold (e.g. > +$100/mo or > 10× latency).",
+      "Evaluates the monthly delta against the configured CostGate warning/block policy and records confidence/direction.",
     ],
-    codeSample: `// Cost Calculation Result
+    codeSample: `// Cost engine result
 {
-  "baseline_ms": 0.124,
-  "candidate_ms": 16.825,
-  "delta_ms": 16.701,
-  "slowdown_factor": 135.6,
-  "monthly_queries": 5000000,
-  "instance_rate_hourly": 0.52, // db.r6g.xlarge
-  "monthly_cost_delta_usd": 1240.50,
-  "regression_verdict": "BLOCKED_P0"
+  "monthly_delta_usd": <computed value>,
+  "lower_bound_usd": <computed value>,
+  "upper_bound_usd": <computed value>,
+  "direction": "increase | decrease | unchanged",
+  "confidence": "high | medium | low"
 }`,
   },
   {
     id: "github-bot",
     number: "06",
     name: "GitHub Check Run & Comment Dispatcher",
-    role: "Actionable Feedback & Fixes",
-    latency: "< 80 ms",
+    role: "Policy result & GitHub write-back",
+    latency: "GitHub write-back",
     security: "Minimal GitHub App Scopes",
     details: [
       "Updates GitHub Commit Check Run status (Success or Failure).",
       "Posts clean markdown comment with visual AST diff and cost breakdown.",
-      "Generates committable suggestion block for one-click resolution.",
-      "Optional Slack / Discord webhook dispatch for team notification.",
+      "Posts the analysis comment and GitHub Check result produced by the processor pipeline.",
+      "Persists the prediction record for the authenticated dashboard and can publish GitHub Check/PR comment results when enabled.",
     ],
-    codeSample: `POST /repos/acme/backend/check-runs
+    codeSample: `// GitHub Check Run is published for the PR head SHA
 {
-  "name": "CostGate / RDS Budget Guard",
-  "head_sha": "e9b2c3f",
   "status": "completed",
-  "conclusion": "failure",
+  "conclusion": "success | neutral | failure",
   "output": {
-    "title": "Cost Regression Blocked: +$1,240.50/mo",
-    "summary": "Query forces 300k row Seq Scan due to LOWER() function."
+    "title": "CostGate policy result",
+    "summary": "Deterministic cost analysis and policy reason"
   }
 }`,
   },
@@ -197,7 +186,7 @@ export default function ArchitecturePage() {
               </span>
             </h1>
             <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-2xl font-normal">
-              How CostGate turns GitHub PR webhooks into sub-second execution plan AST diffs and committable fixes.
+              How CostGate turns GitHub PR events into queued SQL extraction, VPC analysis, deterministic cost modeling, and GitHub write-back.
             </p>
           </div>
 

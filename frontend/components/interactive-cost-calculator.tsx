@@ -157,7 +157,7 @@ export function InteractiveCostCalculator() {
                 min={200_000}
                 max={25_000_000}
                 step={200_000}
-                onValueChange={(val) => setMonthlyRequests(Array.isArray(val) ? val[0] : val)}
+                onValueChange={(val: any) => setMonthlyRequests(Array.isArray(val) ? val[0] : val)}
                 className="py-4"
               />
               <div className="flex justify-between text-[11px] text-muted-foreground font-mono font-medium">

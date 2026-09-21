@@ -7,6 +7,8 @@ from datetime import datetime, time as dt_time, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Protocol
 
+import boto3
+
 from app.bedrock.explanation import (
     CostGateExplainer,
     ExplanationUnavailable,
@@ -16,6 +18,9 @@ from app.policy.cost_policy import CostPolicy
 from app.domain.errors import QueryExtractionError
 from app.github.comment_publisher import GitHubCommentPublisher
 from app.github.pr_reader import PullRequestReader
+from app.github.client import GitHubClient
+from app.github.app_auth import GitHubAppAuthenticator
+from app.auth.repository import ConnectionRepository, PolicyRepository
 from app.ledger.models import PredictionRecord
 from app.ledger.repository import PredictionLedger
 from app.query_extractor.detectors import detect_changed_query
@@ -48,23 +53,33 @@ class PullRequestEventProcessor:
         self,
         *,
         analysis_function_name: str,
-        analysis_invoker: AnalysisInvoker,
+        analysis_invoker: AnalysisInvoker | None,
         pr_reader: PullRequestReader | None = None,
         publisher: GitHubCommentPublisher | None = None,
         ledger: PredictionLedger | None = None,
         explainer: CostGateExplainer | None = None,
         check_publisher: GitHubCheckPublisher | None = None,
         policy: CostPolicy | None = None,
+        installation_id: str | None = None,
+        user_id: str | None = None,
     ) -> None:
         self.analysis_function_name = analysis_function_name
-        self.analysis_invoker = analysis_invoker
+        self.analysis_invoker = analysis_invoker or LambdaAnalysisInvoker(boto3.client("lambda"))
+        self.user_id = user_id
+        if installation_id and not pr_reader:
+            github_client = GitHubClient(
+                authenticator=GitHubAppAuthenticator(installation_id=installation_id)
+            )
+            pr_reader = PullRequestReader(client=github_client)
+            publisher = publisher or GitHubCommentPublisher(client=github_client)
+            check_publisher = check_publisher or GitHubCheckPublisher(client=github_client)
         self.pr_reader = pr_reader or PullRequestReader()
         self.publisher = publisher or GitHubCommentPublisher()
-        self.check_publisher = (
-    check_publisher or GitHubCheckPublisher()
-)
+        self.check_publisher = check_publisher or GitHubCheckPublisher()
 
-        self.policy = policy or CostPolicy.from_environment()
+        # Explicit test/invocation policies win; otherwise the authenticated
+        # user's persisted policy is resolved after the repository owner is known.
+        self.policy_override = policy
         self.enable_check = os.getenv(
             "COSTGATE_ENABLE_CHECK",
             "false",
@@ -176,7 +191,36 @@ class PullRequestEventProcessor:
         repo: str,
         pull_number: int,
         delivery_id: str | None = None,
+        installation_id: str | None = None,
+        user_id: str | None = None,
     ) -> dict[str, Any]:
+        resolved_user_id = user_id or self.user_id
+        connection = None
+        if installation_id:
+            connection = ConnectionRepository().find_by_installation_repo(
+                installation_id,
+                f"{owner}/{repo}",
+            )
+            if not connection:
+                raise PermissionError(
+                    f"Repository {owner}/{repo} is not connected to CostGate for this GitHub App installation."
+                )
+            connection_user_id = connection.get("user_id")
+            if resolved_user_id and connection_user_id != resolved_user_id:
+                raise PermissionError("GitHub installation is not connected to the authenticated CostGate account.")
+            resolved_user_id = connection_user_id
+
+        active_policy = self.policy_override
+        if active_policy is None and resolved_user_id:
+            persisted = PolicyRepository().get(resolved_user_id)
+            active_policy = CostPolicy(
+                warn_monthly_usd=Decimal(str(persisted.get("warn_usd", 5))),
+                block_monthly_usd=Decimal(str(persisted.get("block_usd", 25))),
+                minimum_confidence=os.getenv("COSTGATE_MIN_CONFIDENCE", "medium").lower(),
+            )
+        if active_policy is None:
+            active_policy = CostPolicy.from_environment()
+
         pr = self.pr_reader.read(
             owner,
             repo,
@@ -235,7 +279,7 @@ class PullRequestEventProcessor:
 
         comment_body = analysis_result["comment_body"]
 
-        policy_decision = self.policy.evaluate(
+        policy_decision = active_policy.evaluate(
             monthly_delta=Decimal(
                 analysis_result["monthly_delta"]
             ),
@@ -318,6 +362,7 @@ class PullRequestEventProcessor:
         prediction = PredictionRecord(
             prediction_id=prediction_id,
             repository=f"{owner}/{repo}",
+            user_id=resolved_user_id,
             pull_request_number=pull_number,
             commit_sha=pr.head_sha,
             author=pr.author,
@@ -396,9 +441,19 @@ class PullRequestEventProcessor:
             "pull_number": pull_number,
             "comment_id": comment.get("id"),
             "prediction_id": prediction_id,
-            "monthly_delta": analysis_result.get(
-                "monthly_delta"
-            ),
+            "monthly_delta": analysis_result.get("monthly_delta"),
+            "lower_bound": analysis_result.get("lower_bound"),
+            "upper_bound": analysis_result.get("upper_bound"),
+            "confidence": analysis_result.get("confidence"),
+            "direction": analysis_result.get("direction"),
+            "baseline_execution_ms": analysis_result.get("baseline_execution_ms"),
+            "candidate_execution_ms": analysis_result.get("candidate_execution_ms"),
+            "baseline_rows": analysis_result.get("baseline_rows"),
+            "candidate_rows": analysis_result.get("candidate_rows"),
+            "baseline_scan_type": analysis_result.get("baseline_scan_type"),
+            "candidate_scan_type": analysis_result.get("candidate_scan_type"),
+            "policy_verdict": policy_decision.verdict.value,
+            "check_run_url": check_result.get("html_url") if check_result else None,
         }
 
 

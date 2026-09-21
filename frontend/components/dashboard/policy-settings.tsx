@@ -10,7 +10,6 @@ import { ErrorState } from "@/components/ui/error-state";
 export function PolicySettings() {
   const [warnUsd, setWarnUsd] = useState<number>(5);
   const [blockUsd, setBlockUsd] = useState<number>(25);
-  const [webhookUrl, setWebhookUrl] = useState<string>("https://discord.com/api/webhooks/1234/costgate-alerts");
   const [saved, setSaved] = useState<boolean>(false);
   const [error, setError] = useState<any | null>(null);
 
@@ -22,7 +21,6 @@ export function PolicySettings() {
     } else if (res.data) {
       if (res.data.warn_usd) setWarnUsd(res.data.warn_usd);
       if (res.data.block_usd) setBlockUsd(res.data.block_usd);
-      if (res.data.notification_webhook) setWebhookUrl(res.data.notification_webhook);
     }
   };
 
@@ -36,7 +34,7 @@ export function PolicySettings() {
     const res = await dashboardApi.updatePolicy({
       warn_usd: warnUsd,
       block_usd: blockUsd,
-      notification_webhook: webhookUrl,
+      db_instance: "db.t4g.small",
     });
     if (res.error) {
       setError(res.error);
@@ -70,7 +68,10 @@ export function PolicySettings() {
           </div>
           <Slider
             value={[warnUsd]}
-            onValueChange={(val: any) => setWarnUsd(val[0])}
+            onValueChange={(val: any) => {
+              const num = Array.isArray(val) ? val[0] : typeof val === "number" ? val : Number(val);
+              if (typeof num === "number" && !isNaN(num)) setWarnUsd(num);
+            }}
             min={1}
             max={50}
             step={1}
@@ -89,25 +90,16 @@ export function PolicySettings() {
           </div>
           <Slider
             value={[blockUsd]}
-            onValueChange={(val: any) => setBlockUsd(val[0])}
+            onValueChange={(val: any) => {
+              const num = Array.isArray(val) ? val[0] : typeof val === "number" ? val : Number(val);
+              if (typeof num === "number" && !isNaN(num)) setBlockUsd(num);
+            }}
             min={10}
             max={200}
             step={5}
           />
         </div>
 
-        {/* Webhook Alert URL */}
-        <div className="p-3.5 rounded border border-slate-200 bg-slate-50 space-y-1.5">
-          <label className="font-semibold text-slate-800 flex items-center gap-1.5">
-            <Bell className="size-3.5 text-sky-600" /> Slack / Discord Alert Webhook URL
-          </label>
-          <input
-            type="text"
-            value={webhookUrl}
-            onChange={(e) => setWebhookUrl(e.target.value)}
-            className="w-full p-2 bg-white border border-slate-200 rounded font-mono text-xs text-slate-800 focus:outline-none focus:border-slate-400"
-          />
-        </div>
       </div>
 
       <div className="pt-2 flex items-center justify-between">
